@@ -3,7 +3,7 @@
 import type { Diary } from "@sitecue/shared";
 import { getSafeUrl } from "@sitecue/shared";
 import { useSearchParams } from "next/navigation";
-import { useDeferredValue, useEffect, useMemo } from "react";
+import { Suspense, useDeferredValue, useEffect, useMemo } from "react";
 import { SWRBoundary } from "@/components/ui/swr-boundary";
 import { useFetchDiaries } from "@/hooks/useDiariesQuery";
 import { useFetchDrafts } from "@/hooks/useDraftsQuery";
@@ -11,8 +11,15 @@ import { useFetchNoteContents, useFetchNotes } from "@/hooks/useNotesQuery";
 import { groupNotes } from "@/store/useNotesStore";
 import type { Draft, Note, SearchParams } from "../types";
 import { MiddlePaneList } from "./MiddlePaneList";
+import {
+	MiddlePaneListSkeleton,
+	NotesContainerSkeleton,
+	RightPaneSkeleton,
+} from "./NotesSkeletons";
 import { ResponsiveNotesLayout } from "./ResponsiveNotesLayout";
 import { RightPaneDetail } from "./RightPaneDetail";
+
+export { NotesContainerSkeleton };
 
 export function NotesContainer() {
 	const searchParams = useSearchParams();
@@ -55,6 +62,12 @@ export function NotesContainer() {
 		return "domains";
 	}, [params.view, params.domain]);
 
+	// ★ 入力値を useDeferredValue で遅延させ、重いフィルタ計算を低優先度タスクへ回す
+	const deferredView = useDeferredValue(effectiveView);
+	const deferredDomain = useDeferredValue(domain);
+	const deferredExact = useDeferredValue(exact);
+	const deferredQuery = useDeferredValue(params.q?.toLowerCase() || "");
+
 	// 1. 右ペイン用アイテムの最優先（0ms）ダイレクト抽出
 	// 中ペインの全件計算やフィルタリングの完了を待たず、キャッシュ（notes/drafts）から即時取得する
 	const selectedNote = useMemo(() => {
@@ -71,10 +84,10 @@ export function NotesContainer() {
 	// クエリデータの準備完了状態（対象ビューに必要なデータが準備できているか判定）
 	// 💡 キャッシュデータが存在する場合は isLoading によるブロッキングをスキップし、手元データを0ms最優先描画する
 	const isTabReady = useMemo(() => {
-		if (effectiveView === "drafts") {
+		if (deferredView === "drafts") {
 			return drafts.length > 0 || !isDraftsLoading;
 		}
-		if (effectiveView === "diaries") {
+		if (deferredView === "diaries") {
 			return diaries.length > 0 || !isDiariesLoading;
 		}
 		return (
@@ -83,7 +96,7 @@ export function NotesContainer() {
 			(!isNotesLoading && !isDraftsLoading)
 		);
 	}, [
-		effectiveView,
+		deferredView,
 		drafts,
 		isDraftsLoading,
 		diaries,
@@ -98,26 +111,26 @@ export function NotesContainer() {
 	}, [notes, drafts, isNotesLoading, isDraftsLoading]);
 
 	const isSearchActive = !!params.q || !!params.tags;
-	const query = params.q?.toLowerCase() || "";
 
+	// ★ 遅延させたパラメータ（deferredView等）を元にフィルタリング計算を行う
 	const filteredItems = useMemo(() => {
 		if (!isTabReady) return [];
 
 		let items: (Note | Draft | Diary)[] = [];
-		if (effectiveView === "drafts") {
+		if (deferredView === "drafts") {
 			items = drafts;
-		} else if (effectiveView === "diaries") {
+		} else if (deferredView === "diaries") {
 			items = diaries;
 		} else if (!groupedNotes) {
 			items = [];
-		} else if (exact === "all") {
-			items = groupedNotes.domains[domain || ""]?.domainNotes || [];
-		} else if (exact) {
-			items = groupedNotes.domains[domain || ""]?.pages[exact] || [];
-		} else if (effectiveView === "inbox" || domain === "inbox") {
+		} else if (deferredExact === "all") {
+			items = groupedNotes.domains[deferredDomain || ""]?.domainNotes || [];
+		} else if (deferredExact) {
+			items = groupedNotes.domains[deferredDomain || ""]?.pages[deferredExact] || [];
+		} else if (deferredView === "inbox" || deferredDomain === "inbox") {
 			items = groupedNotes.inbox;
-		} else if (domain) {
-			const domainData = groupedNotes.domains[domain];
+		} else if (deferredDomain) {
+			const domainData = groupedNotes.domains[deferredDomain];
 			if (domainData) {
 				items = [
 					...domainData.domainNotes,
@@ -143,59 +156,57 @@ export function NotesContainer() {
 			items = notes;
 		}
 
-		if (!query) return items;
+		if (!deferredQuery) return items;
 
 		return items.filter((item) => {
 			if ("date" in item) {
 				const diary = item as Diary;
-				return diary.content?.toLowerCase().includes(query) ?? false;
+				return diary.content?.toLowerCase().includes(deferredQuery) ?? false;
 			}
 
 			if ("url_pattern" in item) {
 				const note = item as Note;
 
-				if (effectiveView === "domains" && !domain && !isSearchActive) {
+				if (deferredView === "domains" && !deferredDomain && !isSearchActive) {
 					const safeUrl = getSafeUrl(note.url_pattern);
 					const searchableHost = safeUrl ? safeUrl.hostname : note.url_pattern;
-					return searchableHost.toLowerCase().includes(query);
+					return searchableHost.toLowerCase().includes(deferredQuery);
 				}
 
-				if (effectiveView === "domains" && domain && !exact) {
+				if (deferredView === "domains" && deferredDomain && !deferredExact) {
 					const safeUrl = getSafeUrl(note.url_pattern);
 					const searchablePath = safeUrl
 						? safeUrl.pathname + safeUrl.search
 						: note.url_pattern;
-					return searchablePath.toLowerCase().includes(query);
+					return searchablePath.toLowerCase().includes(deferredQuery);
 				}
 
 				if (note.content === undefined) return true;
 				if (!note.content) return false;
 
-				return note.content.toLowerCase().includes(query);
+				return note.content.toLowerCase().includes(deferredQuery);
 			}
 
 			const draft = item as Draft;
-			return draft.content?.toLowerCase().includes(query) ?? false;
+			return draft.content?.toLowerCase().includes(deferredQuery) ?? false;
 		});
 	}, [
 		groupedNotes,
-		effectiveView,
-		domain,
-		exact,
+		deferredView,
+		deferredDomain,
+		deferredExact,
 		isSearchActive,
-		query,
+		deferredQuery,
 		notes,
 		drafts,
 		diaries,
 		isTabReady,
 	]);
 
-	const deferredFilteredItems = useDeferredValue(filteredItems);
-
 	useEffect(() => {
-		if (!isTabReady || deferredFilteredItems.length === 0) return;
+		if (!isTabReady || filteredItems.length === 0) return;
 
-		const missingIds = deferredFilteredItems
+		const missingIds = filteredItems
 			.filter(
 				(item): item is Note =>
 					"url_pattern" in item && item.content === undefined,
@@ -205,7 +216,7 @@ export function NotesContainer() {
 		if (missingIds.length > 0) {
 			fetchContentForIds(missingIds);
 		}
-	}, [deferredFilteredItems, isTabReady, fetchContentForIds]);
+	}, [filteredItems, isTabReady, fetchContentForIds]);
 
 	return (
 		<ResponsiveNotesLayout
@@ -213,47 +224,51 @@ export function NotesContainer() {
 			selectedDraftId={params.draftId ?? null}
 			selectedDate={params.date ?? null}
 			middleNode={
-				<SWRBoundary
-					data={isTabReady ? deferredFilteredItems : undefined}
-					isLoading={!isTabReady}
-					fallback={
-						<MiddlePaneList
-							items={[]}
-							groupedNotes={
-								groupedNotes || { inbox: [], drafts: [], domains: {} }
-							}
-							currentView={effectiveView}
-							currentDomain={domain ?? null}
-							currentExact={exact ?? null}
-							selectedNoteId={params.noteId ?? null}
-							selectedDraftId={params.draftId ?? null}
-							isLoading={true}
-						/>
-					}
-				>
-					{(items) => (
-						<MiddlePaneList
-							items={items}
-							groupedNotes={
-								groupedNotes || { inbox: [], drafts: [], domains: {} }
-							}
-							currentView={effectiveView}
-							currentDomain={domain ?? null}
-							currentExact={exact ?? null}
-							selectedNoteId={params.noteId ?? null}
-							selectedDraftId={params.draftId ?? null}
-							isLoading={false}
-						/>
-					)}
-				</SWRBoundary>
+				<Suspense fallback={<MiddlePaneListSkeleton />}>
+					<SWRBoundary
+						data={isTabReady ? filteredItems : undefined}
+						isLoading={!isTabReady}
+						fallback={
+							<MiddlePaneList
+								items={[]}
+								groupedNotes={
+									groupedNotes || { inbox: [], drafts: [], domains: {} }
+								}
+								currentView={effectiveView}
+								currentDomain={domain ?? null}
+								currentExact={exact ?? null}
+								selectedNoteId={params.noteId ?? null}
+								selectedDraftId={params.draftId ?? null}
+								isLoading={true}
+							/>
+						}
+					>
+						{(items) => (
+							<MiddlePaneList
+								items={items}
+								groupedNotes={
+									groupedNotes || { inbox: [], drafts: [], domains: {} }
+								}
+								currentView={effectiveView}
+								currentDomain={domain ?? null}
+								currentExact={exact ?? null}
+								selectedNoteId={params.noteId ?? null}
+								selectedDraftId={params.draftId ?? null}
+								isLoading={false}
+							/>
+						)}
+					</SWRBoundary>
+				</Suspense>
 			}
 			rightNode={
-				<RightPaneDetail
-					note={selectedNote}
-					draft={selectedDraft}
-					isNewNote={isNewNote}
-					isLoading={isNotesLoading || isDraftsLoading}
-				/>
+				<Suspense fallback={<RightPaneSkeleton />}>
+					<RightPaneDetail
+						note={selectedNote}
+						draft={selectedDraft}
+						isNewNote={isNewNote}
+						isLoading={isNotesLoading || isDraftsLoading}
+					/>
+				</Suspense>
 			}
 		/>
 	);

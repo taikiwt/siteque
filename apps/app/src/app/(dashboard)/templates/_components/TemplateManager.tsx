@@ -4,7 +4,7 @@ import type { Template } from "@sitecue/shared";
 import { APP_LIMITS } from "@sitecue/shared";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { Button } from "@/components/ui/button";
 import { CustomLink as Link } from "@/components/ui/custom-link";
@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { SWRBoundary } from "@/components/ui/swr-boundary";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
 	useCreateTemplate,
@@ -43,15 +45,18 @@ export function TemplateManager({
 	const effectiveSelectedId =
 		selectedId !== undefined ? selectedId : searchParams.get("id") || null;
 
-	const { data: templates = [], isLoading } =
-		useFetchTemplates(initialTemplates);
+	const { data: templates, isLoading } = useFetchTemplates(initialTemplates);
+
+	const activeTemplates = templates ?? [];
 
 	const createTemplateMutation = useCreateTemplate();
 	const updateTemplateMutation = useUpdateTemplate();
 	const deleteTemplateMutation = useDeleteTemplate();
 
 	// Form State
-	const activeTemplate = templates.find((t) => t.id === effectiveSelectedId);
+	const activeTemplate = activeTemplates.find(
+		(t) => t.id === effectiveSelectedId,
+	);
 	const isNew = effectiveSelectedId === "new";
 	const isDrawerOpen = !isDesktop && (!!activeTemplate || isNew);
 
@@ -246,8 +251,6 @@ export function TemplateManager({
 		</div>
 	);
 
-	if (isLoading) return null;
-
 	return (
 		<div className="flex h-screen overflow-hidden bg-base-bg text-action">
 			{/* List Pane */}
@@ -279,29 +282,73 @@ export function TemplateManager({
 					</div>
 
 					<div className="px-2 py-4 space-y-1">
-						{templates.map((t) => (
-							<div
-								key={t.id}
-								className={`flex items-center justify-between px-3 py-2 rounded-lg group ${effectiveSelectedId === t.id ? "bg-base-bg shadow-sm" : "hover-safe:bg-base-bg/50"}`}
+						<Suspense
+							fallback={
+								<div className="space-y-2">
+									{["tpl-skel-1", "tpl-skel-2", "tpl-skel-3", "tpl-skel-4"].map(
+										(id) => (
+											<div
+												key={id}
+												className="flex items-center justify-between px-3 py-2 rounded-lg h-9"
+											>
+												<Skeleton className="h-4 w-2/3 rounded-md" />
+											</div>
+										),
+									)}
+								</div>
+							}
+						>
+							<SWRBoundary
+								data={templates}
+								isLoading={isLoading && !templates}
+								fallback={
+									<div
+										className="space-y-2"
+										data-testid="template-list-skeleton"
+									>
+										{[
+											"tpl-skel-1",
+											"tpl-skel-2",
+											"tpl-skel-3",
+											"tpl-skel-4",
+										].map((id) => (
+											<div
+												key={id}
+												className="flex items-center justify-between px-3 py-2 rounded-lg h-9"
+											>
+												<Skeleton className="h-4 w-2/3 rounded-md" />
+											</div>
+										))}
+									</div>
+								}
 							>
-								<Link
-									href={`/templates?id=${t.id}`}
-									className="flex-1 truncate text-sm font-medium"
-								>
-									{t.name}
-								</Link>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									onClick={() => handleDelete(t.id)}
-									className="opacity-100 pointer-fine:opacity-0 group-hover-safe:opacity-100 text-gray-400 hover-safe:text-note-alert transition-opacity"
-									type="button"
-									aria-label={`Delete ${t.name}`}
-								>
-									<Trash2 className="w-3 h-3" aria-hidden="true" />
-								</Button>
-							</div>
-						))}
+								{(templateList) =>
+									templateList.map((t) => (
+										<div
+											key={t.id}
+											className={`flex items-center justify-between px-3 py-2 rounded-lg group ${effectiveSelectedId === t.id ? "bg-base-bg shadow-sm" : "hover-safe:bg-base-bg/50"}`}
+										>
+											<Link
+												href={`/templates?id=${t.id}`}
+												className="flex-1 truncate text-sm font-medium"
+											>
+												{t.name}
+											</Link>
+											<Button
+												variant="ghost"
+												size="icon-sm"
+												onClick={() => handleDelete(t.id)}
+												className="opacity-100 pointer-fine:opacity-0 group-hover-safe:opacity-100 text-gray-400 hover-safe:text-note-alert transition-opacity"
+												type="button"
+												aria-label={`Delete ${t.name}`}
+											>
+												<Trash2 className="w-3 h-3" aria-hidden="true" />
+											</Button>
+										</div>
+									))
+								}
+							</SWRBoundary>
+						</Suspense>
 					</div>
 				</div>
 			</div>
@@ -309,13 +356,35 @@ export function TemplateManager({
 			{/* Desktop Editor Pane */}
 			{isDesktop && (
 				<div className="flex-1 flex flex-col overflow-y-auto p-8">
-					{activeTemplate || isNew ? (
-						EditorContent
-					) : (
-						<div className="flex-1 flex items-center justify-center text-gray-400">
-							Select a template to edit or create a new one.
-						</div>
-					)}
+					<Suspense
+						fallback={
+							<div className="max-w-2xl w-full mx-auto space-y-6">
+								<Skeleton className="h-8 w-1/3 rounded-md" />
+								<Skeleton className="h-24 w-full rounded-md" />
+							</div>
+						}
+					>
+						<SWRBoundary
+							data={templates}
+							isLoading={isLoading && !templates}
+							fallback={
+								<div className="max-w-2xl w-full mx-auto space-y-6">
+									<Skeleton className="h-8 w-1/3 rounded-md" />
+									<Skeleton className="h-24 w-full rounded-md" />
+								</div>
+							}
+						>
+							{() =>
+								activeTemplate || isNew ? (
+									EditorContent
+								) : (
+									<div className="flex-1 flex items-center justify-center text-gray-400">
+										Select a template to edit or create a new one.
+									</div>
+								)
+							}
+						</SWRBoundary>
+					</Suspense>
 				</div>
 			)}
 
@@ -344,7 +413,29 @@ export function TemplateManager({
 						</div>
 
 						{/* Scrollable Content Area */}
-						<div className="flex-1 overflow-y-auto p-4">{EditorContent}</div>
+						<div className="flex-1 overflow-y-auto p-4">
+							<Suspense
+								fallback={
+									<div className="max-w-2xl w-full mx-auto space-y-6">
+										<Skeleton className="h-8 w-1/3 rounded-md" />
+										<Skeleton className="h-24 w-full rounded-md" />
+									</div>
+								}
+							>
+								<SWRBoundary
+									data={templates}
+									isLoading={isLoading && !templates}
+									fallback={
+										<div className="max-w-2xl w-full mx-auto space-y-6">
+											<Skeleton className="h-8 w-1/3 rounded-md" />
+											<Skeleton className="h-24 w-full rounded-md" />
+										</div>
+									}
+								>
+									{() => EditorContent}
+								</SWRBoundary>
+							</Suspense>
+						</div>
 					</DrawerContent>
 				</Drawer>
 			)}

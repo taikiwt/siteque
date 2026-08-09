@@ -278,3 +278,7 @@ export function ContentPane({ data, isLoading }: { data?: ContentData; isLoading
 }
 ```
 
+## `useDeferredValue` の入力値適用による UI 最優先応答の規約
+重い計算処理やリストフィルタリングを非同期化する際、計算「後」の配列ではなく、計算「前」の入力パラメータ（`view`, `domain`, `query` 等）に対して `useDeferredValue` を適用すること。これにより、ヘッダーやタブなどの UI シェル状態を 0ms で即座に更新・描画させ、重い計算処理のみを非同期に追随（Deferred）させること。
+
+

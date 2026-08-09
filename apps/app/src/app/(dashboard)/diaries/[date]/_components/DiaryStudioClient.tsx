@@ -9,7 +9,7 @@ import {
 	X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
 	Panel,
@@ -332,23 +332,29 @@ export function DiaryStudioClient({ initialDiary, date }: Props) {
 								</div>
 
 								<div className="relative w-full text-base md:text-sm min-w-0">
-									<SWRBoundary
-										data={activeDiary}
-										isLoading={isDiaryLoading && !activeDiary}
+									<Suspense
 										fallback={
 											<div className="h-64 animate-pulse rounded-xl bg-neutral-100/50 border border-neutral-200" />
 										}
 									>
-										{() => (
-											<StudioEditor
-												onChange={(val) => setContent(val)}
-												value={content}
-												placeholder="Write down your thoughts for today... (Markdown supported)"
-												isDirty={isDirty}
-												onGenerateHint={async () => null}
-											/>
-										)}
-									</SWRBoundary>
+										<SWRBoundary
+											data={activeDiary}
+											isLoading={isDiaryLoading && !activeDiary}
+											fallback={
+												<div className="h-64 animate-pulse rounded-xl bg-neutral-100/50 border border-neutral-200" />
+											}
+										>
+											{() => (
+												<StudioEditor
+													onChange={(val) => setContent(val)}
+													value={content}
+													placeholder="Write down your thoughts for today... (Markdown supported)"
+													isDirty={isDirty}
+													onGenerateHint={async () => null}
+												/>
+											)}
+										</SWRBoundary>
+									</Suspense>
 									<div className="flex justify-end pt-2 text-[10px] font-mono font-bold text-neutral-400">
 										{isNearLimit ? (
 											<span
@@ -525,23 +531,29 @@ export function DiaryStudioClient({ initialDiary, date }: Props) {
 								</div>
 
 								<div className="relative w-full text-base md:text-sm min-w-0">
-									<SWRBoundary
-										data={activeDiary}
-										isLoading={isDiaryLoading && !activeDiary}
+									<Suspense
 										fallback={
 											<div className="h-64 animate-pulse rounded-xl bg-neutral-100/50 border border-neutral-200" />
 										}
 									>
-										{() => (
-											<StudioEditor
-												onChange={(val) => setContent(val)}
-												value={content}
-												placeholder="Write down your thoughts for today... (Markdown supported)"
-												isDirty={isDirty}
-												onGenerateHint={async () => null}
-											/>
-										)}
-									</SWRBoundary>
+										<SWRBoundary
+											data={activeDiary}
+											isLoading={isDiaryLoading && !activeDiary}
+											fallback={
+												<div className="h-64 animate-pulse rounded-xl bg-neutral-100/50 border border-neutral-200" />
+											}
+										>
+											{() => (
+												<StudioEditor
+													onChange={(val) => setContent(val)}
+													value={content}
+													placeholder="Write down your thoughts for today... (Markdown supported)"
+													isDirty={isDirty}
+													onGenerateHint={async () => null}
+												/>
+											)}
+										</SWRBoundary>
+									</Suspense>
 									<div className="flex justify-end pt-2 text-[10px] font-mono font-bold text-neutral-400">
 										{isNearLimit ? (
 											<span

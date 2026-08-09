@@ -1,4 +1,4 @@
-import { use } from "react";
+import { Suspense, use } from "react";
 import { DiaryStudioClient } from "./_components/DiaryStudioClient";
 
 interface Props {
@@ -8,5 +8,9 @@ interface Props {
 export default function DiaryStudioPage({ params }: Props) {
 	const { date } = use(params);
 
-	return <DiaryStudioClient date={date} />;
+	return (
+		<Suspense fallback={<DiaryStudioClient date={date} />}>
+			<DiaryStudioClient date={date} />
+		</Suspense>
+	);
 }

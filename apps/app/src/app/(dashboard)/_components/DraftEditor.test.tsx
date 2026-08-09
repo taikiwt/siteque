@@ -206,3 +206,25 @@ describe("DraftEditor - Error Handling & Architecture", () => {
 		).toBeInTheDocument();
 	});
 });
+
+describe("DraftEditor - Local Suspense Shell Protection", () => {
+	it("ローディング状態でも Header とタイトル領域が 0ms で破綻なく描画されること", () => {
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<DraftEditor draftId="draft-1" />
+			</QueryClientProvider>,
+		);
+
+		// Header とタイトル入力領域の存在確認（0ms即時表示）
+		expect(
+			screen.getAllByRole("button", { name: /^Save$/i })[0],
+		).toBeInTheDocument();
+		expect(
+			screen.getAllByPlaceholderText("Title (optional)")[0],
+		).toBeInTheDocument();
+	});
+});

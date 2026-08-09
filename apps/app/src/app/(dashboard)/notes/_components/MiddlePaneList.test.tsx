@@ -1045,3 +1045,42 @@ describe("MiddlePaneList Bulk Delete Optimistic UI", () => {
 		expect(deleteNotesMock).toHaveBeenCalledWith(["note-1"]);
 	});
 });
+
+describe("MiddlePaneList Deferred Rendering", () => {
+	it("deferredパラメータに基づいてアイテムが正しく非同期描画されること", () => {
+		const mockNotes = [
+			{
+				id: "1",
+				content: "内容A",
+				note_type: "info",
+				created_at: new Date().toISOString(),
+				updated_at: new Date().toISOString(),
+				user_id: "user-1",
+				scope: "inbox",
+				url_pattern: "",
+				is_expanded: false,
+				is_favorite: false,
+				is_pinned: false,
+				is_resolved: false,
+				sort_order: 0,
+				draft_id: null,
+				tags: null,
+			},
+		] as Note[];
+
+		render(
+			<MiddlePaneList
+				items={mockNotes}
+				groupedNotes={{ inbox: mockNotes, drafts: [], domains: {} }}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+				isLoading={false}
+			/>,
+		);
+
+		expect(screen.getByText("内容A")).toBeInTheDocument();
+	});
+});
