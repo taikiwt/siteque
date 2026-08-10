@@ -1,63 +1,25 @@
 ---
-name: Database Rules
-description: Supabase、RLS、マイグレーション、およびデータ操作に関する絶対ルール
+trigger: always_on
+description: Supabase、RLS、マイグレーション、およびデータ操作に関する専門ルール
 ---
 
 # Database Operations & Rules
 
-## 1. SSOT (Single Source of Truth) の原則
-- **スキーマと型の参照**: データベースの構造、テーブル名、カラム名、および `scope` や `note_type` などの Enum値（列挙値）について、このドキュメントや他のMarkdownファイルに具体的な値をハードコードしてはならない。
-- **行動規範**: データの構造やラップされた厳密な型を確認する必要がある場合は、必ず共通パッケージの `packages/shared/src/types/` 配下のファイル群を絶対的な正（SSOT）として直接読みに行くこと。推測による型の指定は厳禁とする。
-- **DAL (Data Access Layer) の強制**: DBアクセスロジックを確認・実装する際は、必ず `packages/shared/src/dal` を唯一の正解とし、アプリ層（`apps/`配下）での `supabase.from()` の直接記述を厳禁とする。新しいテーブル操作を追加する場合は、必ず `shared/dal` に関数を定義してから呼び出すこと。
-- **Inboxデータの整合性**: `sitecue_notes` において `scope = 'inbox'` の場合、`url_pattern` は常に `'inbox'` であることがDBトリガーによって保証される。
-- **日付SSOTの厳守**: クライアント・サーバー・データベースを跨ぐ処理において、時間情報を介在させてはならない。時差による日付のズレを防ぐため、日付（`date`）は常にブラウザのローカルタイムゾーンに基づく `YYYY-MM-DD` 形式の純粋な「プレーン文字列」として一貫してDALへ渡し、文字列のまま完全一致で解釈・保存すること。
-- **日記（Diaries）のアトミック追記＆タイムスタンプ自動付与仕様**:
-  - 日記の新規入力・追記を行う際、クライアントのローカル時刻に基づく `[HH:MM]\n` 形式のタイムスタンプ文字列を自動算出する仕様を絶対維持すること。
-  - **結合仕様（DAL層の掟）**: 初回入力時は `[HH:MM]\n本文` として保存し、同一日における2回目以降の追記時は、既存のcontent末尾に **必ず改行2つ（`\n\n`）** を挟んだ上で、今回のタイムスタンプ＋本文をアトミックに結合して `upsert` すること（単なる上書きや改行不足による視覚的衝突を防ぐため）。
-- **型の使い分け (Slim Fetching)**: 
-  ノート一覧などの大量データ取得時は、パフォーマンス最適化のため本文を含まない `NoteMetadata` 型を使用すること。詳細表示や編集、またはバックグラウンドでの遅延フェッチ完了後には、本文を含む完全な `Note` 型を使用し、型レベルでデータの有無をガードすること。
-- **定数とDBスキーマの整合性保証**: `packages/shared/src/utils/limits.ts` に定義された上限値と `supabase/schema.sql` 内の CHECK 制約（文字数制限等）の数値が一致しているかを自動検証するテストコードを `limits.test.ts` に配置し、定数とDBの不整合をCI/テスト段階で100%防止すること。
-- **リソース制限定数のSSOT集約**: リソース制限定数（ノート・ドラフト・AI等）は、必ず `@sitecue/shared`（`packages/shared/src/utils/limits.ts`）を単一の信頼できる情報源（SSOT）として参照すること。
-- **DBトリガーによるプラン別文字数制限の動的検証**: ノートおよび日記の作成・更新時、DBトリガー関数（`check_note_content_length`, `check_diary_content_length`）にて `sitecue_profiles.plan` を参照し、`free` ユーザーが Free プランの上限（ノート 10,000文字 / 日記 50,000文字）を超えるコンテンツを保存しようとした場合は `RAISE EXCEPTION` を発火させて書き込みをDB層で物理的に遮断すること。
+※最優先遵守事項（DALの強制、Additive Changesのみ等の絶対ルール）については必ず `.agent/rules/core-rules.md` を参照すること。
 
-## 2. データ操作の実装方針
-- **リストの並び替え (Fractional Indexing)**:
-  - ユーザーが手動で並び替えるリスト（`sitecue_notes.sort_order` 等）において、整数の再割り当てによる配列の一括更新は行わないこと。
-  - 少数（`double precision`）を用いた Fractional Indexing を標準とし、単一レコードの `update` のみで並び替えを完結させる。
-- **一括更新における `upsert` の回避**:
-  - PostgreSQLの制約上、`upsert` は部分的なデータのみを渡すとNOT NULL制約でエラーになる。
-  - そのため、部分的なカラムの更新には必ず個別の `update` を使用すること。
-- **N+1クエリの厳禁とRPCの活用**:
-  - ダッシュボードなど、複数の親コンテキストに紐づく子データをグリッド展開する領域では、ループ内での個別クエリ発行（N+1）を厳禁とする。
-  - PostgreSQLの `JSON_AGG` などを活用した単一RPCによる一括フェッチを標準アーキテクチャとすること。
-- **楽観的UI（オプティミスティック更新）における採番対称性の掟**:
-  - 新規レコードを追加する際、クライアント側のインメモリ（React State等）で仮生成するレコードの `sort_order`（Fractional Indexing値）は、必ずデータベースおよび共通DAL側が最終的に採番して返却する評価ロジックと「完全な対称性」を維持しなければならない。
-  - 新規作成レコードをリストの最上部（ピン留め直下）にマウントする仕様においては、楽観的UIの段階から必ず `Math.min(...) - 1.0`（最小値ベース）で仮の若い値を動的採番すること。
-  - データベースから確定データが返ってくるまでのコンマ数秒間、仮データが一瞬リストの最下部に吸い込まれてから上にワープするような「視覚的チラつき（ワープ現象）」の発生を物理的に禁ずる。
+## 1. SSOT (Single Source of Truth) とデータ型規約
+- **型定義の参照**: スキーマ構造やEnum値は、手動コードやドキュメントを推測せず、必ず `packages/shared/src/types/` 配下を参照すること。
+- **日付SSOT**: 時差ズレを防ぐため、日付（`date`）は常にブラウザローカルタイムゾーンに基づく `YYYY-MM-DD` 形式のプレーン文字列としてDALへ渡し、完全一致で保存・判定すること。
+- **Diaries アトミック追記仕様**: 初回入力は `[HH:MM]\n本文`、同一日の追記時は既存本文の末尾に改行2つ（`\n\n`）を挟んで `[HH:MM]\n本文` をアトミック結合し `upsert` すること。
+- **Slim Fetching**: ノート一覧等は本文を除いた `NoteMetadata` 型で軽量フェッチし、詳細・編集時に完全な `Note` 型へハイドレーションすること。
 
-## 3. 開発・マイグレーション・ワークフロー
-- **マイグレーション絶対主義**: 本番のダッシュボードで直接テーブルを変更することは厳禁。変更は必ずローカルでテストし、`supabase/migrations` 内にSQLファイルを作成すること。
-- **ローカルDBのリセット (`db reset`)**:
-  - マイグレーションのテストとして `bunx supabase db reset` を実行すると、`auth.users`（ログインユーザー情報）も初期化される。
-  - そのため、リセット後の動作確認で「外部キー制約エラー」が発生した場合は、フロントエンド（拡張機能等）側で一度ログアウトし、再ログインしてユーザーを再作成すること。
-- **推測によるマイグレーションの禁止**: テーブルの追加やカラムの拡張が必要だと判断した場合でも、「おそらくこうなっているだろう」という推測でマイグレーションSQLを作成してはならない。
-  - 既存の `supabase/schema.sql` や Supabaseのダッシュボード情報、あるいは既存のコードから正確なスキーマ状態を必ずユーザーに確認・要求すること。（すでに必要なカラムが存在している車輪の再発明や、既存の構造を破壊するリスクを排除するため）。
-  - どうしてもスキーマが不明な状態でSQLを書く必要がある場合は、必ず `IF NOT EXISTS` などを多用した防御的SQL（Defensive SQL）を記述すること。
+## 2. データ操作のベストプラクティス
+- **Fractional Indexing**: 順序管理（`sort_order`）は double precision を用いた Fractional Indexing を標準とし、単一レコードの `update` のみで完結させること（配列の一括更新禁止）。
+- **N+1 クエリ排除と RPC 活用**: ダッシュボード等の複雑な階層データ取得は、PostgreSQL の `JSON_AGG` 等を活用した単一 RPC 関数を作成して一括取得すること。
+- **楽観的UIの採番対称性**: 新規作成時の仮 `sort_order` は、DB側の採番（最上部挿入なら `Math.min(...) - 1.0`）と完全に一致させ、ワープ現象を物理排除すること。
 
-## 4. セキュリティ (RLS)
-- すべてのテーブルにおいて RLS (Row Level Security) の有効化を必須とする。
-- 原則として `user_id` カラムを設け、アクセスしてきたユーザー自身のデータのみを操作可能にするポリシーを記述すること。
-
-## 5. 型定義 (`packages/shared/src/types/supabase.ts`) の自動生成と保護
-- AIがTypeScriptのエラーを解消するために `packages/shared/src/types/supabase.ts` を直接手作業で書き換えることは**絶対に禁止**します。
-- カラムやテーブルを追加した場合は、必ずマイグレーションファイルを作成し、ローカルDBに適用 (`bunx supabase db reset` 等) した上で、`bunx supabase gen types typescript --local > packages/shared/src/types/supabase.ts` を実行して自動生成してください。
-
-- DBのマイグレーションを行った後は、プロジェクトのコンテキストを最新に保つため、必ず `bunx supabase db dump --local > supabase/schema.sql` を実行し、ファイルを上書きしてください。
-
-## 7. PostgRESTのクエリ脆弱性対策
-- URLやユーザー入力を条件とする場合、Supabaseの `.or('column.eq."${value}"')` のような文字列連結によるクエリ構築は、カンマ(`,`)やクォーテーション(`"`)によるパースエラー（406 Not Acceptable）やSQLインジェクションのリスクがあるため**使用禁止**です。
-- 複雑なOR条件や安全なエスケープが必要な場合は、必ずDB側に RPC（PostgreSQL関数）を作成し、`.rpc('function_name', { args })` を用いてパラメータとして渡してください。
-
-## 8. Supabaseエラーのハンドリング (PostgrestErrorの罠)
-- **事象**: SupabaseのDB操作から返される例外（`PostgrestError`）は、JavaScriptの標準的な `Error` オブジェクトを継承していない場合がある。
-- **ルール**: `catch (err: unknown)` ブロック内でエラーメッセージを抽出する際、`if (err instanceof Error)` の判定だけでは漏れが発生する。必ず `typeof err === 'object' && err !== null && 'message' in err` のように、オブジェクトのプロパティを安全にチェックして `err.message` を取得すること。`any` を用いた型キャストは禁止とする。
+## 3. マイグレーション ＆ セキュリティ (RLS)
+- **マイグレーション手順**: ローカルで変更テスト後、`supabase/migrations` にSQLを作成し、`bunx supabase db dump --local > supabase/schema.sql` でスキーマを最新化すること。
+- **RLS (Row Level Security)**: 全テーブルで RLS を有効化し、`auth.uid() = user_id` によるアクセスポリシーを必須とすること。
+- **PostgREST インジェクション対策**: `.or('column.eq."${val}"')` などの文字列連結クエリはパースエラーや脆弱性の原因となるため禁止。複雑な OR 条件は DB 側に RPC を作成してパラメータ渡しすること。
+- **PostgrestError の型判定**: `catch (err: unknown)` 内では `typeof err === 'object' && err !== null && 'message' in err` のプロパティチェックでメッセージを取得すること（`instanceof Error` 単体判定は不可）。

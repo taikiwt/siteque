@@ -1,158 +1,35 @@
 ---
-name: Architecture Rules
-description: システム間連携の標準パターン、アーキテクチャ要件、およびネットワーク構成のルール
+trigger: always_on
+description: システム間連携、ネットワーク構成、Cloudflare Workers、およびインテグレーションの専門ルール
 ---
 
 # Architecture & Integration Patterns
 
-## ワンタイム・データリレー・アーキテクチャ
+※最優先遵守事項（IPv4/8787固定、Workersデプロイコマンド等）については必ず `.agent/rules/core-rules.md` を参照すること。
 
-拡張機能からApp Basecamp側へ巨大なデータ（ページテキスト等）を渡す場合の標準パターンは以下の「ワンタイム・データリレー」方式とする。
+## 1. システム間データ連携 (ワンタイム・データリレー)
+拡張機能から App Basecamp へ巨大データ（ページテキスト等）を渡す標準パターン:
+1. **Storage (Extension ➔ DB)**: Supabase の `sitecue_page_contents` テーブルへ直接 `INSERT` し `context_id` (UUID) を取得。
+2. **Relay (Extension ➔ App)**: `context_id` を URL パラメータ（`?context_id=...`）に付与して App Basecamp を開く。
+3. **Consume & Cleanup (App ➔ API ➔ DB)**: API (Hono) でデータを `SELECT` した後、**直ちに該当レコードを `DELETE`** してゴミを残さないこと。
 
-1. **Storage (Extension ➔ DB)**: 拡張機能から Supabase の `sitecue_page_contents` テーブルに直接巨大なデータを `INSERT` し、返却された `context_id` (UUID) を取得する。
-2. **Relay (Extension ➔ App Basecamp)**: 取得した `context_id` を URLパラメータ (例: `?context_id=...`) に付与して App Basecampの特定のページを開く。
-3. **Consume & Cleanup (App Basecamp ➔ API ➔ DB)**: App Basecamp側のAPI (Hono) でその `context_id` を用いてデータを `SELECT` した後、**直ちにそのレコードを `DELETE` し**、DBに一時データを恒久的なゴミとして残さないようにする。
+## 2. Cloudflare Workers & OpenNext 環境設定
+- **公開変数 (`NEXT_PUBLIC_`)**: ビルド時インライン化のための `.env.production` と、デプロイ後 Worker ランタイムのための `wrangler.toml` の `[vars]` の両方に記述すること。
+- **機密キー**: `wrangler.toml` に直接書かず、`bun x wrangler secret put <KEY_NAME>` を使用すること。
 
-## ローカル開発環境のネットワーク固定化
+## 3. ドメイン・サブドメイン戦略
+- **App Basecamp (Next.js)**: `app.sitecue.app`
+- **API (Hono)**: `api.sitecue.app` (CORS厳格管理)
+- **LP (予約)**: ネイキッドドメイン `sitecue.app`
 
-ローカル環境におけるAPI (Wrangler/Hono) と App Basecamp (Next.js) 間の通信トラブルや IPv4/IPv6 のすれ違いを防ぐため、以下のネットワークルールを厳守すること。
+## 4. 認証・BFCache・リダイレクト規約
+- **OAuth ボタンの BFCache 対策**: ログインボタンに `useState` のローカルローディング状態を持たせることは禁止（ブラウザバックでボタンが無効化固定されるため）。HTML `<form>` と Server Actions (`"use server"`) を用いること。
+- **SPA ナビゲーションの維持**: 認証転送時は `window.location.replace` を使わず、`router.replace()` または SSR リダイレクトを使用すること。
+- **認証境界ページの動的指定**: `/login` 等では Router Cache による古い状態表示を防ぐため `export const dynamic = "force-dynamic";` を明示すること。
 
-- **IPv4/IPv6のすれ違い防止**: API (Wrangler) と App Basecamp (Next.js) 間のローカル通信において `localhost` の使用は**禁止**する。必ず `127.0.0.1` を使用すること。
-- **ポートの厳格な固定**: APIは常に `8787` で固定する。Wranglerが自動で `8788` 等にフォールバックして立ち上がるのを防ぐため、起動時は必ず `127.0.0.1:8787` (またはスマホ実機テスト時は `0.0.0.0:8787`) で明示的にバインドさせること。
-- **Next.jsの CORS警告対応**: `next.config.ts` において、通信警告を抑制するための `allowedDevOrigins: ["127.0.0.1", "localhost"]` を設定する場合は、`experimental` ブロックの中ではなく、必ず**コンフィグのルートレベル**に記述すること。
-- **Next.jsの `localhost` フォールバックの回避**: 次のフレームワーク（Turbopack等）の内部プロキシ仕様において、`request.url` が意図せず `localhost` に書き換わり、Supabase Auth等のコールバックURL不一致エラーを引き起こす。ミドルウェアやAPIルートでのリダイレクト先構築時は、必ずヘッダーの `x-forwarded-host` または `host` からURLを構築し、念の為 `hostname === "localhost"` の場合は強制的に `127.0.0.1` に置換する二重の防御策を敷くこと。クライアント側の `location.origin` も同様に置換して防御する。
-- **Server Component (SSR) リダイレクト時のパラメータ消失防止**: `middleware.ts` がセッションをリフレッシュして最新のクッキーをセットしても、同リクエスト内で末端の Server Component（`page.tsx` 等）は古いクッキーしか読めず、`user=null` として独自の `redirect("/login")` を発火させるケース（仕様）がある。この際、せっかくミドルウェアが構築した `?next=` パラメータが消失してログイン後の画面復帰ができなくなるため、Server Component側でログアウト・未認証リダイレクトを投げる際は、必ず `searchParams` プロパティを受け取って手動で元のフルパスを再構築し、`redirect("/login?next=...")` に渡すこと。
-
-## Cloudflare Workers & OpenNext 移行における絶対ルール (Strict Constraints)
-
-当プロジェクトのNext.jsは、Cloudflare Pagesではなく **Cloudflare Workers (Node.js互換)** で稼働しています。AIエディタは過去の知識でコードを破壊しないよう、以下の掟を絶対厳守すること。
-
-- **Adapterの制限**: `@opennextjs/cloudflare` を使用しています。古い `@cloudflare/next-on-pages` の使用やインストール提案は **絶対禁止** です。
-- **Edgeランタイムの禁止**: コードベースのいかなる場所にも `export const runtime = "edge";` を記述してはいけません。OpenNextのNode.js標準動作が破壊されビルドが落ちます。
-- **デプロイコマンド**: `wrangler pages deploy` は禁止です。正しくは `bun run deploy` (裏側は `wrangler deploy`) です。
-- **環境変数の管理 (OpenNextの罠)**:
-  - Wranglerプレビュー（ローカル）は `.env` を無視します。プレビュー用の変数は必ず `.dev.vars` に記述するようユーザーに案内してください（※`.dev.vars` は絶対にGitコミットしないこと）。
-  - 本番用の公開変数（`NEXT_PUBLIC_`）は、**必ず `wrangler.toml` の `[vars]` セクションと `.env.production` の両方に記述**してください。
-    - 理由: Next.jsの仕様上、ビルド時（`next build`）に静的ファイルへ変数をインライン化するために `.env.production` が必要であり、デプロイ後のWorkerランタイム時のために `wrangler.toml` が必要となるためです。
-  - 機密キーを `wrangler.toml` に書く提案は厳禁です。必ず `bun x wrangler secret put <KEY_NAME>` を使うよう案内してください。
-
-## ドメイン・アーキテクチャ戦略 (Domain Architecture)
-
-将来的なマーケティング用LP（ランディングページ）とWebアプリケーションのライフサイクルを分離するため、以下のサブドメイン分割構成をベストプラクティスとして維持すること。
-
-- **App Basecamp (Next.js)**: `app.sitecue.app` 等のサブドメインを使用する。
-- **API (Hono)**: `api.sitecue.app` を使用し、App Basecamp側と明確に分離してCORSを厳格に管理する。
-- **LP (将来追加)**: ネイキッドドメイン `sitecue.app` は、将来的にSEOや高速表示に特化したLP（または別システム）をデプロイするために予約・隔離しておく。
-
-## 🏕️ Base Camp Architecture (App Basecamp)
-
-sitecueのApp Basecampは単なるメモ帳ではなく、情報を加工・発信する「活動拠点（Base Camp）」として機能する。今後の実装では以下の掟を絶対遵守すること。
-
-1. **Note、Draft、Diary の厳格な分離と責務（3大エンティティ構造）**
-   - `sitecue_notes` は拡張機能やブラウザから収集する「素材（Read-Only要素の強い収集データ）」である。
-   - `sitecue_drafts` はApp Basecampでテンプレートを基に練り上げる「成果物（主たる執筆・編集データ）」である。
-   - `sitecue_diaries` は日々の活動や思考をローカル時刻基準で積み重ねる「時系列の活動ログ（日記データ）」である。
-   - AIはこれら3つのテーブル・型・責務を絶対に混同してはならない。素材（Note）を参照しながら成果物（Draft）を錬成し、日々のコンテキストは日記（Diary）へアトミックに蓄積する三位一体の設計とする。
-   - **UIにおける視覚的統合**: データベースおよび型定義においてこれら3つは厳格に隔離されるが、App Basecampの中央リスト（`MiddlePaneList`）のメインナビゲーションにおいては、ユーザーが文脈をシームレスに横断できるよう、同一のカプセルUI構造の中に綺麗に統合・提示すること。
-
-2. Template 駆動設計 (Template-Driven UI/Logic)
-   - `sitecue_drafts` はハードコードされた特定のプラットフォーム（x, zenn等）に依存せず、ユーザー定義の `sitecue_templates` に紐づく (`template_id`)。
-   - エディタのUI（文字数カウンターの有無、プレフィックス等）やAI生成時のプロンプトは、特定のサービス名で `if` 分岐するのではなく、紐づくテンプレートのデータ（`max_length`, `boilerplate`, `weave_prompt` 等）を基準としたデータ駆動（Data-Driven）で実装すること。
-   - `template_id` が null の場合は、いかなる制限も受けない「Blank Canvas（自由帳）」として扱うこと。
-
-3. **責務の分離 (Routing)**
-   - Launchpad（ポータル）はルート (`/`) に、執筆・錬成アトリエは `/studio/` 配下に構築し、それぞれの責務を明確に分離すること。
-
-## 通信経路とAPI連携の掟 (Communication Rules)
-
-1. **DBのCRUD操作:** Extension・App Basecampともに、自社のDB（sitecue_notes 等）の読み書きは Hono API を経由させず、必ず `@sitecue/shared` から提供される共通DAL関数を経由して Supabase と通信すること（RLSによる保護を活用するため）。
-2. **シークレットキーが必要な外部API（Gemini、天気予報等）:** APIキーの漏洩を防ぐため、フロントエンド（Extension/App Basecamp）から直接叩かず、必ず自社の Hono API (`apps/api/`) に専用エンドポイントを作り、JWT認証を経由してプロキシ（仲介）させること。
-3. **シークレットキーが不要なパブリックAPI:** Extension・App Basecamp内で直接 `fetch` 等を用いて通信してよい。
-
-## 認証・ルーティングにおけるBFCacheとキャッシュの掟
-
-1. **OAuthログインのBFCache（ブラウザバック）トラップ回避**
-   App BasecampにおけるOAuthログイン（Google, GitHub等）のトリガーボタンに、クライアントサイドのステート（`useState` による `isLoading` など）を用いてローディング状態を管理することは**絶対禁止**とする。
-   外部ドメインへ遷移した後にユーザーがブラウザバックで戻ってきた際、BFCacheによって「ボタンが無効化された状態」が復元され、永久に操作不能になる致命的なバグを引き起こすため。
-   認証トリガーは必ずピュアな HTML `<form>` と Next.js の **Server Actions (`"use server"`)** を用いて実装し、クライアントJSに依存しない堅牢なリダイレクト処理を構築すること。
-
-2. **認証リダイレクトおよびログイン済みチェック時の転送**
-   認証リダイレクトおよびログイン済みチェック時の転送には `window.location.replace` などのハードリロードを絶対に使用せず、Next.js の `router.replace()` または SSR レベルでの `redirect()` による SPA ナビゲーションを維持すること。
-
-3. **認証・セッション境界ページのキャッシュ無効化**
-   `/login` などの認証を司るページでは、Next.jsの Router Cache によって古い状態（ログイン済みなのにログイン画面が出る等）が引き起こされるのを防ぐため、必ずページコンポーネントの最上部に `export const dynamic = "force-dynamic";` を記述し、静的キャッシュを無効化すること。
-
-## AI機能と外部APIにおけるクオータ管理の掟 (Cost Protection Architecture)
-
-生成AIやコストのかかる外部APIを呼び出す機能を実装する際は、ランニングコストの流出を防ぐため、必ず以下の「3段構えのガード」をアーキテクチャに組み込むこと。
-
-1. **DBでの記録:** `sitecue_profiles` 等のテーブルで、ユーザーの月間利用回数 (`usage_count`) とリセット日時を厳密に管理する。
-2. **API側の絶対的ガード:** フロントエンドの制御を信用せず、Hono API (`apps/api/`) 側で必ずDBの利用回数とプランの上限を確認し、上限到達時は外部APIを叩かずに即座に `403 Forbidden` を返すこと。
-3. **UIのPaywall:** フロントエンド側では残回数をインジケーターとして表示し、上限到達時は処理をブロックして「Proプランへの課金導線（Paywallモーダル）」を表示すること。
-4. **Heavy / Light タスクのカウント分離**: UXの摩擦を防ぐため、AI機能はその特性に応じてクオータ（利用回数）のカウント戦略を分けること。
-   - **Heavy (例: Weave, Review)**: トークン消費が大きく、ユーザーも「重い処理」と認識しているため、実行ごとに利用回数を消費する。
-   - **Light (例: Ghost Text / Hint)**: 高頻度で呼ばれる機能はユーザー向けの利用回数制限（UI上のカウント）からは除外し、実質無制限としてUXを損なわないようにする。※ただし、システム内部に悪意のある連続呼び出しを防ぐための Rate Limit（見えない安全装置）を別途設けること。
-5. **コンテキストを持った403エラー**: API側で上限到達を弾く際、単なるエラーメッセージだけでなく、フロントエンドがPaywallを適切に出し分けられるよう、現在のユーザーのプラン情報（例: `plan: "free"`）等を JSON レスポンスに含めて返却すること。
-
-## 定数とリミット管理の掟
-- アプリケーション全体における保存上限（ノート・ドラフト等）や警告の閾値を判定する際、ロジック内に数値をハードコード（マジックナンバー化）してはならない。必ず `apps/app/src/constants/limits.ts` に定義された定数をインポートして使用すること。
-
-## Hono API (apps/api) のレイヤーアーキテクチャ規約
-
-APIの肥大化を防ぎ、関心の分離とテスト容易性を保つため、`apps/api/` 内の実装は以下の厳格なレイヤー構造に従うこと。単一の `index.ts` にロジックを集中させることは技術的負債となるため**絶対禁止**とする。
-
-- **`index.ts` (Entry Point):**
-  - アプリケーションの初期化、グローバルなミドルウェア（CORS等）の適用、および各ルート (`app.route()`) のマウントのみを担当する「薄い層」に保つこと。
-- **`routes/` (Routing Layer):**
-  - エンドポイントの定義（GET, POST等）と、リクエストの受け取り・レスポンスの返却のみを行う。
-  - 複雑なビジネスロジックはここには書かず、必ず `services/` へ委譲すること。
-- **`services/` (Service / Business Logic Layer):**
-  - Geminiなどの外部API呼び出し、クオータ管理、複雑なDB操作など、純粋なビジネスロジックをカプセル化する。
-  - リクエストやレスポンスのオブジェクト（Honoの `Context`）に直接依存せず、純粋な関数として実装しテスト可能にすること。
-- **`middlewares/`:**
-  - Supabase Authなどの認証や、特定ルートに挟む共通処理を配置する。
-- **`types.ts`:**
-  - Honoの `Bindings` (環境変数) や `Variables` (ユーザー情報等) を一元管理し、各レイヤーで安全に `import` して使用する。
-
-
-## AIプロンプト管理と型安全の掟 (AI & Type Safety Rules)
-
-1. **AIプロンプト構築のバックエンド集約と物理的分離 (Separation of Concerns)**
-   - AI（LLM）へのプロンプト構築や、それに伴うDBからの設定値（例: `weave_prompt`）の動的な取得は、**必ずバックエンド（`apps/api/` の `services/` レイヤー）の責務**とする。フロントエンドから生のプロンプトを送信してはならない。
-   - **【重要】** さらに、`services/` のロジック内にプロンプトの長文（英語の指示やルール等）を直接ハードコードしてはならない。プロンプトの組み立て（テンプレートリテラル等）は必ず `apps/api/src/prompts/` ディレクトリ配下に純粋な関数として切り出し、ロジックとプロンプトコンテンツを物理的に分離すること。
-
-
-2. **【🚨過去のバグ教訓】API層におけるSupabaseの厳格な型アサーション**
-   - **事象**: `apps/api/` 内で Supabase からデータを `.single()` 等で取得した際、型が推論できず暗黙の `any` となり、プロジェクトの絶対ルールである「Biomeの `any` 禁止令」に抵触。結果としてAIエディタが自己解決（Lintエラー修正）の無限ループに陥り、プロセスがフリーズする事故が発生した。
-   - **ルール**: API層など、Supabaseの自動生成型が直接効きにくい場所でDBから値を取得する場合は、AIに推論を任せるのではなく、**必ず明示的な型アサーション（例: `const data = rawData as { weave_prompt: string | null };`）を行い、暗黙の `any` を絶対に発生させないこと**。
-
-## 中央集権化の原則 (Centralized Approach)
-
-UIの挙動やグローバルなイベント監視（スクロール検知、キーボードショートカット、クリック領域外の判定など）において、複数のコンポーネントやページに同様のロジックを散らばらせる「分散型実装」は**絶対的なアンチパターン**とする。
-
-- **モグラ叩きの禁止**: あるページで起きたバグを修正するために、そのページ固有のコンテナにだけパッチを当てるような修正（Workaround）を行わないこと。必ず「システム全体で一元管理できないか？」を最初に検討する。
-- **AppShell / Layoutへの集約**: ページ共通のレイアウトやグローバルなイベント監視は、各 `page.tsx` や下層コンポーネントではなく、必ず最上位の `AppShell.tsx`（またはそれに準ずる Layout コンポーネント）に集約（Centralized）すること。
-- **イベントのグローバル・キャプチャ**: DOMツリーの奥深くで発生するイベントを包括的に検知する必要がある場合（例: アプリ内のあらゆるスクロールの検知）、個別のコンテナに `onScroll` をアタッチするのではなく、`window.addEventListener('scroll', handler, true)` （キャプチャリングフェーズ）等を用いて最上位で一括検知する設計を採用すること。
-
-## レイアウトとポジショニングの堅牢性 (Layout & Positioning Robustness)
-
-モバイル対応などのレスポンシブなUIにおいて、不自然な空白や重なり（透け）を防ぐための原則。
-
-- **透明スペーサーの禁止**: ヘッダーの高さなどを担保するために、空の `<div className="h-14" />` のような透明なスペーサー要素をDOMに差し込む設計は、レイアウトの不整合を生むため原則禁止とする。
-- **AbsoluteからFlowへの移行**: 要素の表示・非表示を切り替える際、`absolute` を用いて画面上に浮かせるアプローチは直下のコンテンツと自然に連動しないため避ける。通常のブロックレベル要素（Flow配置）として扱うことを基本とする。
-  - **🚨【警告】スクロール連動のネガティブマージン禁止**: かつてモバイルヘッダーを隠すために使用していたネガティブマージン（`-mt-14` 等）を用いた要素の押し上げ・隠蔽アプローチは、iOSのスクロール慣性と激しく干渉しレイアウトシフトを引き起こす致命的なアンチパターンであることが判明したため、今後は使用を固く禁ずる。
-  - モバイルドロワー内でのフッターアクション（Weaveボタン等）やボトムナビの配置において、`fixed bottom-0` や `absolute bottom-4` などの絶対配置は画面サイズ差異による見切れの原因となるため使用禁止とする。必ず親コンテナを `flex flex-col` とし、コンテンツ領域を `flex-1 overflow-y-auto min-w-0`、フッター領域を `shrink-0 pb-safe` としてFlow配置で構成すること。
-- **Z-indexのグローバル戦略**: 固定ヘッダー（`sticky`）とスクロールするリストアイテム等が重なる際、背景が透けるバグを防ぐため、コンポーネント単体で `z-10` などを設定しない。システム全体の重なり順（Z-index階層）を意識し、固定ヘッダーは `z-20` や `z-50` など、明確に上位のレイヤーを確保すること。
-- **モバイルのフルスクリーン・オーバーレイ**: モバイル環境で画面全体を覆うオーバーレイ（Stack遷移など）を実装する際は、必ず `z-index` 階層を AppShell のヘッダー (`z-20`) よりも高く設定（例: `z-30`）し、`inert` 属性で背後のインタラクションを完全に遮断すること。
-
-## URLパラメータのSSOT原則 (URL Parameter as SSOT)
-
-ナビゲーションやペインの表示状態において、URLとローカルステートが競合するバグを防ぐための絶対原則。
-
-- **状態の二重管理禁止**: 「現在どのドメインを表示しているか」「検索モーダルが開いているか」「詳細ペインが開いているか」などの階層・ナビゲーション状態は、**URLパラメータ（Search Params）を唯一の情報源（SSOT）** とする。Zustand 等のローカルステートで独自にフラグを管理・上書きしてはならない。
-- **ナビゲーションの条件付き表示**: ナビゲーションや特定のグローバルUIの表示/非表示を切り替える際、それが『特定のページ（画面）にいるから』という理由であるならば、必ず `usePathname` または `useSearchParams` を用いてURLから直接判定すること。ローカルやグローバルな状態（フラグ）を新たに作って制御してはならない。
-- **パラメータの破壊的変更の禁止**: コンテキスト（例: `exact=all`）を持ったまま新しいアクション（例: 新規作成 `new=note`）をトリガーする際、URL生成時に元のパラメータを勝手に削らないこと。不要なパラメータのパースやフォールバック処理は、必ず「URLを受け取って処理を実行する側（受信側）」の初期化ロジックで行うこと（多層防御の原則）。
-- **詳細ペイン遷移時のコンテキスト完全性**: 画面内の要素（スニペット等）からノート詳細へダイレクトにジャンプするリンク（href）を構築する際は、単に `noteId` を渡すだけでなく、必ずそのノートが所属している「親の階層コンテキスト（domain, exact, view等）」のパラメータを全て漏れなく引き継いで再構築すること。
-## 共通パッケージ (@sitecue/shared) の利用規約
-- **純粋性の担保**: ドメインロジック（URL正規化、タグ抽出など）および共通型定義はすべて `packages/shared/` に集約し、各アプリからは `@sitecue/shared` を経由してインポートすること。
-- **環境依存コードの混入禁止**: `@sitecue/shared` 内部には、特定のランタイム（DOM APIの `window` や `document`、Node.js固有モジュールなど）に依存するコードを絶対に記述してはならない。環境依存の処理が必要な場合は各アプリ側の `utils/` にラッパーを残し、純粋なデータ変換のみを `@sitecue/shared` に委譲する設計とすること。
+## 5. 生成AIクオータ・コストガード構造
+1. **DB管理**: `sitecue_profiles` で月間利用回数 (`usage_count`) とリセット日時を管理。
+2. **API絶対ガード**: Hono API 側で上限チェックを行い、到達時は `403 Forbidden` と現在のプラン情報を返却。
+3. **Heavy / Light タスク分離**:
+   - **Heavy (Weave, Review等)**: 回数を消費。
+   - **Light (Hint等)**: UIカウントからは除外し実質無制限（内部 Rate Limit で保護）。

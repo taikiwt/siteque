@@ -1,296 +1,35 @@
 ---
-name: React & UI Rules
-description: 楽観的UI、ソート描画、UX等に関するReactのリファレンスとルール
+trigger: always_on
+description: 楽観的UI、SWRBoundary仕様、UX、状態管理、コンポーネント実装のReact規約
 ---
 
 # React & UI Implementation Rules
 
-## Optimistic UI (楽観的UI)
-
-- **楽観的UI更新のフリーズ防止**: API通信を伴うUI操作（並び替え等）は、ロールバックの無限ループを防ぐため、通信中は必ずステート（`isSorting` 等）でUIをロック（`disabled`）すること。
-
-## Sorting & Rendering
-
-- **UIソートとデータソートの分離禁止**: 手動で並び替えられるリストの描画時、`.sort()` に他のカテゴリ等の強制ソート条件を混入させないこと（手動ソート順が反映されなくなるため）。
-
-## UX & Styling
-
-- **IME Composing Guard（確定時Enter暴発防止の掟）**: `<input>` や `<textarea>` を用いて「Enterキーの押下」で要素の追加、確定、Submitなどのカスタムインタラクションを行う箇所では、マック等のIME環境における漢字変換確定時のEnter暴発を物理的に防ぐため、必ず `if (e.nativeEvent.isComposing) return;`（あるいはKeyDown時の `e.preventDefault()` ガード）を先頭に記述し、文字列確定後の純粋なEnterのみをイベント駆動のトリガーとすること。
-- **ツールチップのUX**: ネイティブの `title` 属性を使用する要素に `cursor-help` を付与しないこと。カーソル変化がツールチップの文字化け（？）と誤認されるため。
-- **Icons & Tooltips (Lucide Reactの型エラー回避)**: `lucide-react` のアイコンコンポーネント（例: `<Search />` 等）に直接 `title` 属性を渡すとTypeScriptの型エラーとなるため絶対に行わないこと。ツールチップやタイトルが必要な場合は、アイコンを `<span>` や `<button>` などのラッパー要素で囲み、そちらのラッパー要素に対して `title` 属性や `aria-label` 属性を付与すること。
-- **Interactive Feedback & Button Components**:
-  - ボタンの実装ルールやセマンティックカラーの運用、環境ごとの差異に関する絶対的なルールは、すべて `.agent/rules/ui-rules.md` を参照し遵守すること。
-- **トランジションとルーティングの同期（遅延ルーティング）**: Drawerなどのアニメーションを伴う閉じる操作で URL変更（`router.push`等）を行う際は、URL状態とローカルの表示状態（UI State）を分離し、クローズアニメーション完了（約300ms）を待機してから実行すること。
-- **背後スクロールの物理ロック**: モバイル環境等のAppShell構成においてフローティングUIを展開する際は、スクロール漏れを防ぐため、背後となる親コンテナ全体に動的に `pointer-events-none` および `inert` (TypeScript環境でエラーになる場合は `aria-hidden="true"`) を付与し、完全な遮断を行うこと。
-- **物理的制約と強力な折り返し (Robust Word Wrapping)**: 長大なURLやスペースのない連続文字列によってコンテナが意図せず膨張し、レイアウトを破壊（横スクロールの発生）することを防ぐための原則。
-  - **FlexboxのTruncate伝播トラップの回避**: Flexコンテナ内で長文の `truncate` (3点リーダー) が効かず親コンテナごと膨張してしまう場合、親に `min-w-0` や `w-full` を無理に付与するとネガティブマージン等のレイアウトを破壊することがある。この場合はコンテナを `flex` から `grid` に変更し、テキスト領域のトラック幅を `minmax(0, 1fr)` に設定すること。これによりテキストの自然長（min-content）の伝播を物理的に断ち切り、確実に3点リーダーを発動させるアプローチを第一選択（標準パターン）とする。
-  - **Raw Dataの折り返し**: MarkdownRenderer などの子要素に対しては `[overflow-wrap:anywhere]` や `break-all` を注入し、あらゆる箇所での強制的な折り返しを貫通させること。
-  - **【絶対ルール】長大文字列（ドメイン・URL）のGridガードとツールチップの義務化**: ユーザー入力や外部データに依存する「ドメイン名」や「個別ページURL」を横並びで表示する領域は、スペースのない連続した超長大文字列（円周率ドメイン等）が渡されることを常に想定しなければならない。右側のアクション要素を物理的に保護するため、コンテナは `flex` ではなく `grid grid-cols-[minmax(0,1fr)_auto]` で囲むこと。さらに、省略（`truncate` / `line-clamp`）が発動するすべてのテキスト要素には、ユーザーが元の文字列を視認できるよう、必ずネイティブの `title` 属性（またはツールチップ）をセットで設定すること。
-- **iOS Safari 自動ズームの防止**: モバイル環境において `<input>` や `<textarea>` などの入力フォームを実装・修正する際は、フォーカス時の意図しない自動ズームアウト・ズームインを防ぐため、必ずフォントサイズを 16px 以上（`text-base`）に設定すること。PC表示との互換性を保つ場合は `text-base md:text-sm` のようにレスポンシブクラスを適用して解決する。
-
-
-## Hierarchical Navigation UI (階層型ナビゲーションのUIパターン)
-
-- **親要素の責務制限 (Parent-Toggle Pattern)**: ドメインリストなどのアコーディオン付きツリー構造において、親要素（ヘッダー部分）は「開閉（Toggle）のみ」を担当させ、画面遷移やノート選択のイベントを発火させないこと。
-- **全体スコープの明示**: ドメイン全体のノートなど、親スコープそのものに紐づくデータへのリンクは、展開されたアコーディオンの子要素の先頭に「🌐 全体のノート」等の独立したアイテムとして明示的に配置し、ユーザーの誤操作を防ぐこと。
-- **Search-driven Expansion (検索時の自動展開)**: 検索キーワードが入力されている状態、またはその親要素配下のアイテムが現在アクティブな状態では、ユーザーの視認性を高めるために対象のアコーディオンを自動的に展開（Force Open）するロジックを含めること。
-
-
-## 状態管理の責務分離 (Server State vs UI State)
-
-アプリケーションの状態管理は、以下の明確な責務分離の原則に従うこと。過去に採用していた「データベース由来の配列データを Zustand 等で手動同期するアプローチ」は同期漏れバグの温床となるため非推奨であり、使用してはならない。
-
-1. **Server State (リモート状態) = TanStack Query (`@tanstack/react-query`)**
-   - データベースから取得する永続化データ（Notes, Drafts, Templates 等の配列や詳細データ）の管理にのみ使用する。
-   - データの取得には `useQuery` を使用し、コンポーネント側でローディング状態（`isLoading`）を適切にハンドリングする。
-   - データの作成・更新・削除には直接 Supabase クライアントを叩かず、必ずカスタムフック化された `useMutation`（例: `useCreateNote`, `useDeleteDraft`）を使用すること。
-   - ミューテーションの `onSuccess` コールバック内で必ず `queryClient.invalidateQueries({ queryKey: [...] })` を呼び出し、キャッシュの自動破棄とUIの自動同期を保証すること。
-
-2. **UI State (ローカル状態) = Zustand (`useNotesStore` 等)**
-   - データベースに保存されない純粋なUIの振る舞い（現在選択中のノートID、検索クエリ文字列、サイドバーの開閉状態、未保存フラグ `isDirty` 等）の管理にのみ使用する。
-   - APIのレスポンスデータ（リスト配列など）を Zustand のステートとして保持したり、`addNote` などのアクションで手動操作・同期してはならない。
-
-### ミューテーションにおける二重同期規約 (Dual Sync Rule for Mutations)
-- **原則:** すべてのデータ変更フック (Create, Update, Delete) の `onSuccess` では、以下の2つの処理を**必ずセットで実行**すること。
-  1. **手元キャッシュの 0ms 即時更新 (`setQueriesData`):** 
-     単一キー向けの `setQueryData` ではなく、必ずプレフィックス一致の `setQueriesData` を使用し、配列・検索結果オブジェクト双方の手元キャッシュを即時挿入/置換/削除すること。
-  2. **関連クエリの一括バックグラウンド再検証 (`invalidateQueries`):** 
-     自身のエンティティキー (`NOTES_QUERY_KEY` 等) に加え、トップページが参照する `DASHBOARD_QUERY_KEY` (`["dashboard", "data"]`) などの関連クエリキーを一括無効化・再検証させること。
-
-
-### 【重要】URL State (SSOT) と Client State (UI) の住み分けの掟
-AIエディタによる「URL一元管理（SSOT）」への過剰適応（すべての状態をURLに同期しようとしてパフォーマンスを破壊する挙動）を物理的に防ぐため、以下の境界線を厳格に遵守すること。
-
-- **URL State (SSOT) にすべきもの（永続・セッションコンテキスト）**:
-  - 画面のリロードや別タブ展開時にも「完全に状態が復元・維持されているべき情報」。（例：現在選択中の詳細タブ `?tab=materials` や `?tab=review`、表示中のノートIDなど）
-  - これらは `router.replace` 等を用いてURLと同期させ、画面遷移の基軸（SSOT）とする。
-- **Client State（useState / UIストア）に限定すべきもの（高速UIインタラクション）**:
-  - ミリ秒単位の俊敏な折りたたみ、フェード、トグル伸縮を伴う「純粋な視覚の目隠し・開閉状態フラグ」。（例：パネルの開閉 `isPanelOpen`、モーダルの展開、ツールチップの表示状態など）
-  - **禁止事項**: これら高速インタラクションのフラグまでURLパラメータ（`?panel=open` 等）に同期させてはならない。同期させた場合、Next.js (App Router) が「クライアントサイドルーティング」を検知してコンポーネントツリー全体（CodeMirror等の巨大なキャンバス含む）の不要な再評価・差分チェックを暴発させ、実機のアニメーションフレームレートを著しく低下（もっさり・カクつき）させる原因となるため厳禁とする。
-- **グローバル新規作成ダイアログの爆速開閉制御:**
-  `GlobalNewNoteDialog` の開閉および内部モード（gate / note / diary）は、URLパラメータではなく、Zustand 等のインメモリ UI Store で一元管理（`0ms` 駆動）すること。外部からのディープリンク導線（`?globalNew=note` 等）は、初期マウント時（一度きり）のパッシブ同期としてのみ検知を許可し、検知直後に即座に URL からパラメータを消去（クリーンアップ）するハイブリッド構造を維持すること。
-
-## In-Memory First Pattern (未保存データの一時保持と履歴管理)
-
-※このパターンは、上記の「UI State (ローカル状態)」の範疇においてのみ適用される。
-
-ユーザー入力などの頻繁な状態変化や、親データが未確定の際の子データの作成において、無駄なDBアクセスやゴーストデータの発生を防ぐため、以下の設計パターンを遵守すること。
-
-- **ゴーストデータの防止:** 親データ（例: 新規ドラフト）がDBに未保存の状態で子データ（例: メモ）を作成する場合、裏側で勝手に親を自動保存（Auto-save）してはならない。必ず子データはブラウザのメモリ上（React State / Zustand）で一時保持し、ユーザーが明示的に保存ボタンを押したタイミングで、親の生成と子の一括同期（Bulk Insert）を行うこと。
-- **インメモリ履歴 (Undo/Redo):** テキスト入力やAIによる生成結果など、ユーザーが元の状態に戻したくなる操作に対しては、DBにいちいちスナップショットを保存するのではなく、React State内の配列（In-Memory Stack）を用いて履歴を管理すること。
-
-
-## Responsive Design (レスポンシブ対応)
-
-- **Responsive Layout Wrapper パターンの徹底**: PCとモバイルで大きく構造が変わるUI（ドロワーやサイドシートへの格納など）を実装する際、1つのコンポーネント内に `hidden md:block` などのCSSクラスを多用して無理に共存させないこと。必ず `useMediaQuery` フックを用いて「PC用レイアウト」と「モバイル用レイアウト（shadcnのDrawer/Sheet等）」を物理的に分離したラッパーコンポーネントを作成し、関心の分離を保つこと。
-- **Mobile Drill-down / Detail View の遷移パターン (Stack over Drawer)**: リストから詳細画面への遷移（ドリルダウン）など、モバイルでの深い階層への移動において、下からせり上がる `Drawer` (vaul 等) は iOSの標準的なスワイプバック挙動と干渉し、UXを損ねるため使用を避けること。代わりに、CSSの `transform-gpu` を用いた「右から左へのスライドイン（Stack遷移）」と `inert` による背面ロックを採用し、ネイティブアプリに近い自然な操作感とトランジションを提供すること。
-- **Hydration初期ペイントラグのCSS補助クラスガード (二重描画モーフィングの防止)**:
-  `useMediaQuery("(min-width: 1024px)")` 等の JS 判定は、マウント直後の第1フレーム（1コマ目）で一時的に `false` と評価される。この際、PC用コンテナとモバイル用コンテナが同時に描画され、上下に二重表示された直後に片方が消えるレイアウトシフト（モーフィング）が発生するのを防ぐため、`useMediaQuery` による物理的なコンポーネント分離を行う際は、判定フラグによる条件分岐（三項演算子等）だけに頼らず、**必ず最外殻コンテナへ Tailwind の静的ブレークポイントクラス（PC用: `hidden lg:flex`, モバイル用: `lg:hidden`）を常時固定で併用すること**。これにより、JS の判定が完了する前であってもブラウザの CSS エンジンが非対象コンテナを 0ms で遮断し、画面のチラつきや二重描画を物理的に防止する。
-
-
-## UI Component Library (shadcn/ui の制約)
-
-- **部分導入の原則 (Partial Adoption)**:
-  本プロジェクトでは、モバイル対応などで複雑なアクセシビリティ（Focus Trapやアニメーション等）が要求されるコンポーネント（例: `Drawer`, `Sheet`, `Dialog`）にのみ特例として `shadcn/ui` を部分的に導入しています。
-- **肥大化の防止**:
-  基本となるUI（ボタン、カード、入力フォーム等）は、依存関係の肥大化を防ぐため、引き続きピュアな Tailwind CSS を用いて独自実装してください。安易に `bunx shadcn add` を実行してプロジェクト全体をshadcnに依存させることは禁止です。
-- **技術仕様 (Tailwind v4 / @base-ui)**:
-  当プロジェクトの shadcn コンポーネント群は Tailwind v4 環境に適合するようセットアップされており、Radix UI ではなく `@base-ui` に依存している場合があります（`asChild` ではなく `render` プロップを使用するなど）。コードを生成する際は現在の `components/ui/` 配下の実装パターンを必ず踏襲してください。
-
-
-## Search & Filtering UI Rules
-
-- **URLのノイズキャンセリング (Noise Cancellation in Grouping)**: 検索UIにおけるURLのグルーピング処理において、「ドメインが検索クエリにマッチした場合は、そのドメイン配下の個別ページはPAGES結果から除外する」というノイズ排除のロジックを標準とすること。
-
-
-## Drag and Drop (@dnd-kit) Rules
-- **useSortableの単一呼び出し**: `useSortable` は1つのリストアイテム（同じID）につき必ず1回のみ呼び出すこと。ドラッグハンドルと本体のコンポーネントで二重に呼び出すと、内部エンジンが干渉して機能が完全に停止する。
-- **ドラッグハンドルの必須スタイル**: ドラッグハンドルとして機能する要素（アイコンボタン等）には、ブラウザのスクロール操作との干渉を防ぐため必ず `style={{ touchAction: "none" }}` を付与すること。
-- **SSR時のHydrationエラー防止**: Next.js (App Router) 環境で `<DndContext>` を使用する場合、サーバーとクライアントでのアクセシビリティID（`aria-describedby`）の不一致によるHydration Mismatchを防ぐため、必ず固定のID（例: `id="notes-dnd-context"`）をプロパティとして渡すこと。
-
-## Sorting & Rendering
-- **Fractional Indexingとサーバーソートの同期**: ドラッグ＆ドロップ等でDBの `sort_order` を更新した際、データを取得する親コンポーネント（`page.tsx` 等の Server Component）の取得クエリや、メモリ上での `.sort()` ロジックが「作成日順」等に固定されていないか必ず確認・修正すること。サーバー側の順序が `sort_order` を優先するようになっていないと、リロード時等にUIのスナップバック（巻き戻り現象）が発生する。
-
-
-## UI/UX & パフォーマンス実装規約 (Lessons Learned)
-
-過去に発生したパフォーマンス低下やレイアウト崩れの教訓として、以下の規約を厳守すること。
-
-- **モーダル・ダイアログのオーバーフロー対策 (絶対ルール)**:
-  - **事象**: 長文テキストをペーストした際、モーダルが画面外にはみ出して操作不能になるバグが発生した。
-  - **ルール**: `<DialogContent>` や `<SheetContent>` など、動的に高さが変わる可能性のあるフローティング要素を実装する際は、**必ず最大高さの制限（例: `max-h-[85vh]`）と内部スクロール（`overflow-y-auto` 等）を設定すること**。画面サイズを突破する無限の高さを許容してはならない。
-
-- **高負荷なCSSエフェクトの制限 (GPU負荷の考慮)**:
-  - **事象**: `DialogOverlay` に `backdrop-blur` を広範囲に適用した結果、GPU使用率が急増する深刻なパフォーマンス問題が発生した。
-  - **ルール**: モーダルやドロワーの背景（Overlay）に対して `backdrop-blur` を無闇に使用しないこと。基本は単なる半透明のカラー（例: `bg-black/20`）を使用し、どうしても必要な場合は適用範囲を極力狭めるなど、常にレンダリング負荷を考慮したスタイリングを行うこと。
-
-- **データ値 (Raw Data) と UI表示値の厳密な分離**:
-  - **事象**: `<Select>` コンポーネントにおいて、DBに保存する内部値（例: `exact`）がそのままユーザー向けのUI（ラベル）として表示されてしまう不具合が発生した。
-  - **ルール**: UIコンポーネント（特に `<SelectValue>` などの表示領域）において、ステートの生の値（Raw Data）をそのまま流し込まないこと。必ずヘルパー関数や三項演算子を用いて、ユーザー向けに適切なラベル（例: `exact` -> `Page`）へマッピングして表示するロジックを噛ませること。
-
-- **共通コンポーネントのネガティブマージンへの警戒**:
-  - **事象**: `dialog.tsx` の `DialogFooter` に設定されているネガティブマージン（`-mx-4` 等）と、呼び出し側のパディングが干渉してレイアウトが崩れた。
-  - **ルール**: shadcn/ui などの共通コンポーネントを利用して独自UIを組む際は、大元のコンポーネントに付与されているデフォルトの余白（マージン・パディング）を必ず確認し、必要に応じて呼び出し側でリセット（例: `m-0`）やレイアウト調整を行うこと。
-
-- **複数コンポーネントからのグローバル状態競合防止 (Multi-source State 管理)**:
-  - **事象**: 画面内に複数の独立した入力フォームやエディタが存在する際、それぞれがZustandの `isDirty`（未保存フラグ）を単純なboolean値で上書きし合った結果、他のコンポーネントの変更状態を意図せずリセットしてしまうバグが発生した。
-  - **ルール**: 複数の独立したコンポーネントから単一のグローバル状態（未保存フラグやローディング状態など）を更新する場合、単純な boolean の直接上書き（`set({ isDirty: true/false })`）を行ってはならない。必ず `Record<string, boolean>` などの Map 形式でコンポーネント固有の ID（`useId()` 等）をキーとして状態を保持し、`Object.values(map).some(Boolean)` のように論理和（OR）や論理積（AND）で全体のステータスを導出すること。
-  - **適用例**: 未保存ガードを実装する際は、独自に `beforeunload` を書くのではなく、必ずこの対策が施された `useUnsavedChanges` フックを使用すること。
-
-- **AppShellアーキテクチャにおける高さ（Height）の管理**:
-  - **事象**: 親レイアウト（`AppShell`）が `h-dvh` (旧 `h-screen`) と `overflow-hidden` で画面全体を管理している状態で、子ページ（`page.tsx` や `DraftEditor`）が独自に `h-screen` や `min-h-screen` を指定した結果、モバイルブラウザのUI伸縮と干渉して二重スクロールやコンテンツ下部の見切れが発生した。
-  - **ルール**: グローバルな `AppShell` 内部にレンダリングされるページやコンポーネントは、画面の高さを自前で確保するために `h-screen` や `100vh`、`100dvh` を絶対に使用してはならない。必ず `h-full` または `flex-1` を使用し、親コンテナの高さ（100%）に追従させること。スクロール領域は `overflow-y-auto` を用いて明示的に指定すること。
-
-- **絶対配置（Absolute）UIのオーバーラップ回避と状態連動**:
-  - **事象**: サイドバーが閉じた際に出現する「オープンボタン」を `absolute` で配置した結果、メインコンテンツ（ヘッダー等の左上文字）と衝突（オーバーラップ）した。
-  - **ルール**: 浮遊するUI（Absolute配置のボタン等）が存在する場合、背面のメインコンテンツは Zustand 等のグローバルステート（例: `isSidebarOpen`）を参照し、浮遊UIが出現するタイミングで動的に `padding`（例: `!isSidebarOpen && "md:pl-16"`）を付与してスペースを空けること。
-
-- **トランジション時の条件付きレンダリング（アンマウント）の禁止**:
-  - **事象**: サイドバーを閉じる際、ステート（`isSidebarOpen`）の切り替わりと同時に即座にオープンボタンをレンダリング（`!isSidebarOpen && <Button>`）した結果、CSSアニメーション（縮小）の完了前にボタンが出現し、不自然な残像が発生した。
-  - **ルール**: CSSトランジション（`transition-all duration-300` 等）を伴うUIの出し入れでは、Reactの条件付きレンダリングによる即時マウント・アンマウントを行わないこと。要素は常時レンダリングしておき、CSSの `opacity`、`scale`、`pointer-events`、および出現タイミングを遅らせる `delay` クラスを組み合わせて、アニメーションの完了と要素の出現を完璧に同期させること。
-
-- **URLと状態の同期における「イベント駆動」の徹底（useEffect暴走の防止）**:
-  - **事象**: `searchParams` の変化を `useEffect` で監視し、そこから `router.push` や `replace` を呼び出してURLを自動修復する設計にした結果、詳細ペインを開くための `noteId` 付与など別のURL変更に過剰反応し、意図しないパラメータの消去（詳細画面が即座に閉じるバグ）や無限ループが発生した。また、URLからの受動的な同期時にIMEの入力妨害（フォーカス強奪）が発生した。
-  - **ルール**: URLの更新は、絶対に `useEffect` の依存配列トリガーで行ってはならない。必ずユーザーの明示的なアクション（`onChange`, `onClick`, `onSubmit` 等）を起点とする**「イベント駆動」**で実装すること。
-  - **適用例**: URLからローカルStateへの一方向の同期（パッシブ同期）を `useEffect` で行う場合は、IME変換中などの入力妨害を防ぐため、必ず `document.activeElement === inputRef.current` によるガードを先頭に記述すること。
-  - **`useEffect` による自動 URL パラメータ補正リダイレクトの禁止と受動的派生評価の徹底**:
-    URL パラメータのエイリアスや旧フォーマット（例: `domain=inbox`）を補正するために、コンポーネントの `useEffect` ライフサイクル内で `router.replace()` を自動発火させることを固く禁ずる。コンポーネント描画直後に2段階目のレンダリングが走り、画面に激しいフリッカー（チラつき・2重描画）を引き起こすためである。
-    パラメータの補正や代替解釈は、`useMemo` 等を用いた「受動的な派生評価（ロジック内でのエイリアス吸収）」へ一元化し、1回のレンダリングサイクル内で完結させること。
-
-- **Slim-fetchingアーキテクチャにおけるDB検索状態のグローバル化**:
-  - **事象**: 初回ロードを軽量化するため本文（`content`）を取得しないSlim-fetchingを採用しているにもかかわらず、本文検索（DBへの `ilike` クエリ）の結果をローカルコンポーネント（`NotesContainer`）の `useState` に閉じ込めてしまった。その結果、サイドバーや他のUIが「検索にヒットしたノートが存在する」という事実を検知できず、UIから消えたり非表示のままになるバグが発生した。
-  - **ルール**: Slim-fetchingで除外されているデータ（`content` 等）を用いてDBレベルの検索やフィルタリングを行う場合、その検索結果（`searchResults`）は絶対にローカルに閉じ込めず、**グローバルな状態管理（Zustand の `useNotesStore` 等）に引き上げる**こと。これにより、サイドバーのフォルダツリー展開や中央リストの表示など、アプリ全体のUIが検索結果に対して一貫して反応できるようにする。
-  - **環境ごとの検索戦略の棲み分け**: 本文検索の統合アプローチは環境に応じて分離すること。
-    - **App Basecamp**: 上記の通り、DBへのクエリ（`searchResults`）をグローバルステートに引き上げて管理する。
-    - **Extension**: 閲覧中のコンテキスト（今、ここ）に集中するためDB全体検索は行わず、ハイドレーション前はメタデータ（タグ等）で即時検索し、ハイドレーション完了後はメモリ上の本文を含めて安全にクライアントサイドでフォールバック絞り込みを行う設計を標準とする。
-
-- **非同期UIアクションの二重ロック (Double Locking for Async Actions)**:
-  - **事象**: ネットワーク遅延時や高速ダブルクリック時、あるいはショートカットの連打によって、APIリクエストが多重に送信され、APIコストの無駄な消費やUIの不整合（レースコンディション）が発生する。
-  - **ルール**: API通信等の非同期処理を伴うアクションには必ずガードを設けること。ボタンの場合は「UI側の無効化（`disabled={isLoading}`）」に頼るだけでなく、必ずハンドラー関数の先頭に「ソフトウェアロック（`if (isLoading) return;`）」を追加し、二重防壁（Double Lock）とすること。また、キーボードショートカットの場合は物理的ロックが不可能なため、必ずステートによるロックを行い、`try...finally` ブロックを用いてエラー時にも確実にロック状態を解除すること。
-
-- **エディタ非同期処理における状態の「浦島太郎化」防止 (Stale State / RangeError Prevention)**:
-  - **事象**: TiptapやProseMirrorなどのエディタで非同期処理（AIのテキスト生成待ちなど）を `await` している間に、ユーザーがタイピング等の操作を行ってエディタの状態が進むと、非同期処理の解決後に古い `state` から生成したトランザクションを適用しようとして `RangeError` が発生し、エディタがクラッシュする。
-  - **ルール**: エディタに対する非同期処理を行う場合、`await` 前に取得した古い `state` をトランザクションの生成に使い回してはならない。非同期処理の完了後は、必ず `editor.state` または `editor.view.state` から「最新の状態」を再取得して適用するか、リクエスト時のドキュメント長（size等）を記録しておき、変更があった場合はAIのレスポンスを安全に破棄（return）するガード処理を必ず実装すること。
-
-- **状態同期の手動管理によるUI不整合 (Manual State Sync Bugs)**:
-  - **事象**: 過去のアーキテクチャにおいて、DBへの `insert` や `delete` は成功しているが、Zustand の配列に対するローカル同期（`addNote` や `removeNote`）の呼び出しが漏れていたため、リストや詳細表示が即座に更新されず、リロードするまで古いデータが表示されるバグが多発した。
-  - **ルール**: この問題を根本から防ぐため、データベースのレコードと紐づくリストデータの手動管理は完全に廃止された。データ操作時は、必ず TanStack Query の `useMutation` を経由し、キャッシュの無効化（Invalidation）によって自動同期させること。「コンポーネント内で個別に `supabase.from(...).insert(...)` を呼び出し、その後にローカルの配列変数を操作する」という実装は例外なく厳禁とする。
-
-- **DOMの厳格なネスト規則と Hydration Error 防止 (Strict DOM Nesting)**:
-  - **事象**: `<Link>` (内部 `<a>`) の中に `<button>` を配置した結果、ブラウザが不正なDOM構造として自動補正し、Next.jsのSSRとの間で致命的な Hydration Error と再レンダリングの無限ループ（CPU暴走）が発生した。
-  - **ルール**: インタラクティブな要素のネスト（`<a>` の中に `<button>` や `<a>`、`<button>` の中に `<button>`）はHTMLの仕様違反であり **絶対禁止** とする。カード全体をクリッカブルにしつつ内部に別のアクション（トグルボタン等）を配置したい場合は、カード全体を覆う「透明な `<Link>` を絶対配置（`absolute inset-0 z-0`）」とし、内部のボタンをその上の層（`relative z-10 pointer-events-auto`）に配置する「オーバーレイ・パターン」を使用すること。
-
-- **PanelGroup / Panelコンポーネントのサイズ指定における「パーセンテージ文字列」の強制 (絶対ルール)**:
-  - **事象**: `PanelGroup` および `Panel` コンポーネント（`react-resizable-panels` 等）を用いてPC版マルチペイン（Studio画面など）を構築・修正する際、`defaultSize`, `minSize`, `maxSize` 等の属性に純粋な数値（例: `defaultSize={65}` や `minSize={20}`）を指定すると、ライブラリ内部の％計算ロジックが狂い、右側ペインが右端に完全に押し潰されて窒息・非表示（幅0px）になる致命的な表示崩れ（デグレード）が発生した。
-  - **ルール**: PC版の分割作業空間を構築する際は、安易に数値型で Props を渡してはならない。**必ずすべてのサイズ属性（`defaultSize`, `minSize`, `maxSize`）を一貫してパーセンテージ文字列（例: `defaultSize="65%"`, `minSize="30%"`, `maxSize="50%"`）として明示的にダブルクォーテーションで囲んで指定すること**。AIエディタによる勝手な数値型への「最適化」やリファクタリング、先祖返りは例外なく永久に禁止する。
-
-- **動的データに対する条件分岐のハードコード回避 (Avoid Hardcoding Enums in UI)**:
-  - **事象**: バッジのクリックイベントにおいて `if (item.note_type === "idea")` と特定のタイプをハードコードしたため、他のタイプ（Info等）でクリックイベントが発火しなくなるバグが発生した。
-  - **ルール**: 動的なデータタイプ（`note_type` 等）に依存するUI要素にクリックイベントやインタラクティビティを追加する際、ビジネスロジック上の明確な理由がない限り、特定のタイプ名をハードコードして条件を限定しないこと。全タイプで柔軟に動作するロジックを組むか、設定オブジェクト等を用いて拡張性を持たせること。
-
-- **Next.js 動的フォント変数と Tailwind v4 @theme の罠 (Font Variable Resolution)**:
-  - **事象**: `next/font/local` や `next/font/google` で生成した動的なCSS変数（例: `--font-hack`）を、`globals.css` の `@theme inline` ブロック内で別のカスタム変数（例: `--font-editor: var(--font-hack)`）として再定義しようとすると、Tailwind v4の評価タイミングとのズレにより正しく適用されない（フォールバックが効かない）バグが発生した。
-  - **ルール**: Next.jsの `next/font` によって実行時に注入される変数を、CodeMirrorのテーマ定義などJS/TS側から利用する場合は、Tailwindの `@theme` を経由して抽象化しようとせず、必ずコンポーネント側で直接 `var(--font-hack), system-ui, sans-serif` のように生のCSS変数を参照して実装すること。
-
-- **カスタムバリアントと状態クラスの優先度競合（CSS Specificity Battle の回避）**:
-  - **事象**: `@custom-variant hover-safe` を導入した結果、TailwindにおけるCSSの評価順（ソースオーダー）が変わり、`group-data-[success=true]` などのデータ属性による状態変化クラスよりもホバー状態が勝ってしまい、クリック（完了）後にもホバー時のアイコンが重なって表示され続けるバグが発生した。
-  - **ルール**: アニメーションや状態遷移を伴うコンポーネント（`HoverSwapButton`等）において、特定の状態（SuccessやActive）とホバー（hover-safe）のスタイルが競合する場合、CSSの `!` (Important) や詳細度のパズルで無理やりねじ伏せるアプローチ（アンチパターン）をとってはならない。必ず React の State（例: `isSuccess`）を用いた三項演算子で、適用するCSSクラス文字列自体をJS側で出し分ける（完了時は不要なホバークラスをDOMから消去する）堅牢な設計とすること。
-
-- **Shadcn / Radix UI のアニメーション同期ライフサイクル破壊の禁止（チラつき防止の掟）**:
-  - **事象**: `DialogContent` などの組み込みフローティング要素に対して、呼び出し側から不用意に `transition-all duration-300` などの CSS Transition を混ぜて上書きした結果、Radix UI 内部の `animationend` の消し込みライフサイクルと衝突。背景（Overlay）だけが先に不自然にパッと消え去る深刻なチラつきが発生した。
-  - **ルール**: フローティング要素の開閉アニメーションの速度やタイミングは、原則として大元のフレームワーク（Shadcn/Radix）側の管理に 100% 委ねること（引き算の美学）。安易に手動の transition クラスを合成して同期を破壊してはならない。
-
-- **カスタムボタンコンポーネントのフォーカス境界線（border-ring）上書きパージの掟**:
-  - **事象**: ダイアログをEscキー等で閉じた際、Radixのフォーカスバック仕様により起動ボタン（sitecueロゴ等）にフォーカスが戻却される。このとき、共通カスタムボタン（`button.tsx`）に内包されている `focus-visible:border-ring` が発火し、`focus-visible:ring-0` を指定しているにもかかわらず、ボタンのキワの1pxの境界線（border）が色づいて極小のグレーの輪っかとして残像露出するバグが発生した。
-  - **ルール**: 特設トリガーボタンなどでフォーカス時のアウトラインや輪っかを完全に消し去りたい場合は、`focus-visible:ring-0` だけでなく、必ず **`focus-visible:border-transparent` もセットで付与** し、cvaが駆動する境界線の色変化まで徹底的に上書き・引き算（パージ）すること。
-
-## React 19 & Attributes Strict Typing
-- **`inert` などの真偽値属性**: React 19環境において、`inert` などのboolean属性には必ず `true` / `false`（または `undefined`）を渡し、空文字列 `""` を渡すハックは行わないこと。
-
-## URL Context Completeness (Opening Context)
-- **検索画面等からの遷移**: グローバルな検索画面（`SearchModal`等）から詳細画面へ遷移する際、単に `draftId=xxx` を渡すだけでなく、そのアイテムが属する裏側のリストコンテキスト（例: `view=drafts`）を必ずURLに含めて遷移させること。これにより詳細画面の裏側で正しいリストがマウントされることを保証する。
-
-##### 【非同期ミューテーションとRSC同期の「完全直列化」の掟】
-データ操作（特に入れ替えやフラグ変更）の完了直後に、Next.jsのサーバーコンポーネント側を最新状態へ同期させるために `router.refresh()` を呼び出す場合、**Promiseを返さない通常の `mutate` を使用してはならない**。
-
-- **理由:** `mutate` は非同期処理の完了を待機せず一瞬でスルーするため、Supabaseへの書き込みやTanStack Queryのキャッシュ分配が完了する前に `router.refresh()` が先行発火してしまう。結果として、サーバーが「まだ書き換えられていない古いデータ」をクライアントに返却し、画面が巻き戻る、あるいは「同じ操作を2回繰り返さないと成功しない」という怪現象のトリガーとなる。
-- **厳守事項:** 画面の即時同期を伴うライフサイクルでは、必ず **`mutateAsync` を使用し、通信とデータ層のキャッシュ分配の解決を物理的に `await` で100%待機すること**。データ層の要塞化が完全に解決された直後のクリーンな状態になってから、初めて `router.refresh()` を直列実行させる実行パイプラインを構築しなければならない。
-
-## ⚡ Core Async Display Infrastructure: SWRBoundary Rules (`apps/app/src/components/ui/swr-boundary.tsx`)
-
-sitecue における画面表示・非同期データの局所レンダリング制御は、すべて共通コンポーネント `<SWRBoundary>` を唯一の表示インフラ（SSOT）として通過させること。
-個別のコンポーネント内で独自にローディングタイマーや表示分岐ロジックを分散実装することを**固く禁止**する。
-
----
-
-### 1. SWRBoundary が保証する表示ライフサイクル
-
-1. **Unblocked Shell (外殻の0ms常時露出)**
-   - データの取得状態（`isLoading`）に関わらず、画面外殻（AppShell、ヘッダー、タブ、検索窓、操作バー）をスケルトンで覆い隠したり `isLoading` で同期ブロックしてはならない（常に0ms表示・即時操作可能）。
-
-2. **Cold Start / 初回リクエスト取得時 (200ms ホールド ＆ 0ms スキップ)**
-   - キャッシュがなく新規にデータ取得を行う場合、動的コンテンツ領域（Partial）にスケルトンを表示する。
-   - データ着信が中途半端に早い際の一瞬の点滅（Visual Flash）を防ぐため、スケルトン表示時は **最低 200ms (`SKELETON_HOLD_MS`)** 表示を維持する。
-   - ただし、データが空であることや件数が少ないことが瞬時に確定できる軽量ケースは、スケルトン保持をバイパスして **0ms で即時表示** すること。
-
-3. **Warm State / 2回目以降のキャッシュ保持時 (0ms 即時表示 ＋ Deferred 局所待機)**
-   - キャッシュが存在する場合は、UIだけでなく動的コンテンツも **0ms で即座に表示** すること。
-   - ただし、マークダウンレンダリング等の重い処理（Concurrent Rendering）で表示遅延が発生し、白い画面などでユーザーを待たせるリスクがある場合は、`useDeferredValue` と `<SWRBoundary>` の `isDataReady` プロップ等を連動させ、描画準備が整うまで局所スケルトンを表示して体感速度を保護すること。
-
-4. **0ms Unblocked Container Shell ＆ Partial Skeleton 規約**
-   - パネルやペインコンテナを実装する際、`if (isLoading)` でコンテナ外殻（ヘッダーや枠組み）ごとアンマウント・テキスト置換することを**固く禁止**する。
-   - コンテナ外殻・ヘッダーは 0ms で常時即時表示（Unblocked Shell）させ、データフェッチ中（`isLoading === true`）は**リスト領域内部のみにスケルトンプレースホルダー（Partial Skeleton）を配置**して最速の視覚的フィードバックを提供すること。
-
-5. **UI シェル 0ms 常時表示とデータスロットごとの `<Suspense>` ＋ `<SWRBoundary>` ペア配置規約**
-   - コンテナ全体の最外殻に単一の `<SWRBoundary>` を配置して全画面をスケルトン化することを禁ずる。
-   - UIシェル（グリッド、枠組み、見出しタグ）は 0ms 常時露出させ、データ依存コンテンツのみを独立したデータスロット（サブコンポーネント）として分離する。
-   - 各データスロットの呼び出し位置には、サスペンド漏れ出し防止用の `<Suspense>` と `<SWRBoundary>` を多層ペア保護として適用すること。
-     ```tsx
-     <Suspense fallback={<SlotSkeleton />}>
-       <SWRBoundary data={slotData} fallback={<SlotSkeleton />} isLoading={isLoading}>
-         {(data) => <SlotContent data={data} />}
-       </SWRBoundary>
-     </Suspense>
-     ```
-
----
-
-### 2. SWRBoundary の「拡張と進化」に関する掟 (Extensibility Rule)
-
-- **個別ハックの禁止:** 今後の開発において、既存の `<SWRBoundary>` では対応できない「新しい表示要件・シチュエーション」が発生した場合であっても、呼び出し側のコンポーネントに独自の `useState` や `setTimeout` などを書くパッチ修正（Workaround）を行ってはならない。
-- **基盤側の進化 (Base Extension):** 未知の表示条件が必要になった場合は、**必ず `apps/app/src/components/ui/swr-boundary.tsx` 自体に新たなプロップ（判定関数やフラグ）や内部ロジックを追加・拡張し**、アプリ全体の共通基盤として進化させた上で使用すること。
-
----
-
-### 3. 基本実装パターン
-
-```tsx
-import { useDeferredValue } from "react";
-import { SWRBoundary } from "@/components/ui/swr-boundary";
-
-export function ContentPane({ data, isLoading }: { data?: ContentData; isLoading: boolean }) {
-  // マークダウン解析等のConcurrent遅延化
-  const deferredData = useDeferredValue(data);
-
-  return (
-    <SWRBoundary
-      key={data?.id ?? "none"}
-      data={deferredData}
-      isLoading={isLoading}
-      isDataReady={(readyData) => readyData !== undefined && readyData.content !== undefined} // 必要に応じて「データの準備完了」を判定するオプショナル関数（拡張可）
-      fallback={<ContentSkeleton />} // 実データと全く同じ物理サイズ（min-h-50等）を固定確保
-    >
-      {(renderedData) => (
-        <div className="min-h-50">
-          <MarkdownRenderer content={renderedData.content} />
-        </div>
-      )}
-    </SWRBoundary>
-  );
-}
-```
-
-## `useDeferredValue` の入力値適用による UI 最優先応答の規約
-重い計算処理やリストフィルタリングを非同期化する際、計算「後」の配列ではなく、計算「前」の入力パラメータ（`view`, `domain`, `query` 等）に対して `useDeferredValue` を適用すること。これにより、ヘッダーやタブなどの UI シェル状態を 0ms で即座に更新・描画させ、重い計算処理のみを非同期に追随（Deferred）させること。
-
-
+※最優先遵守事項（SWRBoundary×Suspense二重防壁、200msスケルトン保持等の絶対禁止事項）については必ず `.agent/rules/core-rules.md` を参照すること。
+
+## 1. Core Async Display Infrastructure: SWRBoundary Rules
+- **表示ライフサイクル**:
+  1. **Unblocked Shell**: UIシェルはデータ取得状態に関わらず 0ms 常時表示。
+  2. **Cold Start (200ms ホールド)**: 初回アクセス時はスケルトンを表示。チラつき防止のため最低 200ms (`SKELETON_HOLD_MS`) 表示を維持する（データ空確定時は 0ms スキップ可）。
+  3. **Warm State (0ms 即時表示)**: キャッシュ保持時は 0ms で即座にデータ表示。重い処理を伴う場合は `useDeferredValue` と `isDataReady` プロップを連動させる。
+- **基盤進化の原則**: 未知の表示条件が必要な場合は、コンポーネント側でローディングタイマーを書かず、必ず `swr-boundary.tsx` 自体を拡張して使用すること。
+
+## 2. 状態管理の責務分離 (Server State vs UI State)
+- **Server State = TanStack Query**: 永続データ（Notes, Drafts等）の管理。変更時は `onSuccess` 内で `setQueriesData`（手元キャッシュ一括更新）と `invalidateQueries`（バックグラウンド再検証）を必ずセットで実行すること。
+- **UI State = Zustand**: 純粋なブラウザ上のUI状態（選択ID、未保存フラグ `isDirty` 等）のみを管理する。DBデータ配列を手動管理・同期してはならない。
+- **URL Params as SSOT**: 画面リロード時も維持すべき永続コンテキスト（タブ、表示ノートID等）は `URLSearchParams` を唯一の情報源とする。ただし、パネル開閉やアニメーション等のミリ秒単位のフラグは URL に同期させず Client State に留めること。
+
+## 3. UX, Form & Interactive Rules
+- **IME Composing Guard**: Enterキーでの追加・送信インタラクションを行う箇所では、漢字変換確定時のEnter暴発を防ぐため、必ず `if (e.nativeEvent.isComposing) return;` ガードを先頭に記述すること。
+- **Icons & Tooltips**: `lucide-react` のアイコンに直接 `title` 属性を渡さず、ラッパー要素（`<span>`, `<button>`）に `title` または `aria-label` を付与すること。
+- **iOS Safari 自動ズーム防止**: 入力フォーム (`<input>`, `<textarea>`) のフォントサイズは 16px 以上（`text-base md:text-sm`）に設定すること。
+- **非同期アクションの二重ロック**: API通信を伴う処理は、UI側の `disabled` に加え、ハンドラー関数の先頭にソフトウェアロック（`if (isLoading) return;`）を配置して二重防御すること。
+
+## 4. Responsive Design & Layout Systems
+- **Responsive Layout Wrapper パターン**: PCとモバイルで大きく構造が変わるUIは、1コンポーネント内でクラス分岐させず、`useMediaQuery` を用いて「PC用」と「モバイル用」のコンポーネントを物理分離すること。二重描画を防ぐため、最外殻コンテナには静的ブレークポイントクラス（`hidden lg:flex`, `lg:hidden`）を併用すること。
+- **Mobile Drill-down (Stack over Drawer)**: モバイルの詳細遷移は、iOSスワイプバックと干渉する `Drawer` ではなく、CSS `transform-gpu` による右からのスライドイン（Stack遷移）を採用すること。
+- **長大文字列の Grid ガード**: ドメイン名やURLを横並びで表示する領域は `grid grid-cols-[minmax(0,1fr)_auto]` で囲み、省略（`truncate`）される要素にはネイティブの `title` 属性を必ず設定すること。
+
+## 5. Optimistic UI & Drag and Drop (@dnd-kit)
+- **楽観的UIのロック**: 並び替え等の処理中はステートで操作をロック（`disabled`）し、ロールバックの無限ループを防ぐこと。
+- **D&Dルールの徹底**: `useSortable` は1アイテムにつき1回のみ呼び出し。ドラッグハンドルには `style={{ touchAction: "none" }}` を付与。`<DndContext>` には SSR の Hydration Error 防止のため固定 ID（例: `id="notes-dnd-context"`）を渡すこと。
