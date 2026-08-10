@@ -241,6 +241,18 @@ sitecue における画面表示・非同期データの局所レンダリング
    - パネルやペインコンテナを実装する際、`if (isLoading)` でコンテナ外殻（ヘッダーや枠組み）ごとアンマウント・テキスト置換することを**固く禁止**する。
    - コンテナ外殻・ヘッダーは 0ms で常時即時表示（Unblocked Shell）させ、データフェッチ中（`isLoading === true`）は**リスト領域内部のみにスケルトンプレースホルダー（Partial Skeleton）を配置**して最速の視覚的フィードバックを提供すること。
 
+5. **UI シェル 0ms 常時表示とデータスロットごとの `<Suspense>` ＋ `<SWRBoundary>` ペア配置規約**
+   - コンテナ全体の最外殻に単一の `<SWRBoundary>` を配置して全画面をスケルトン化することを禁ずる。
+   - UIシェル（グリッド、枠組み、見出しタグ）は 0ms 常時露出させ、データ依存コンテンツのみを独立したデータスロット（サブコンポーネント）として分離する。
+   - 各データスロットの呼び出し位置には、サスペンド漏れ出し防止用の `<Suspense>` と `<SWRBoundary>` を多層ペア保護として適用すること。
+     ```tsx
+     <Suspense fallback={<SlotSkeleton />}>
+       <SWRBoundary data={slotData} fallback={<SlotSkeleton />} isLoading={isLoading}>
+         {(data) => <SlotContent data={data} />}
+       </SWRBoundary>
+     </Suspense>
+     ```
+
 ---
 
 ### 2. SWRBoundary の「拡張と進化」に関する掟 (Extensibility Rule)
