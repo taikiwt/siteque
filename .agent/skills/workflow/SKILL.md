@@ -1,159 +1,23 @@
 ---
-name: Workflow Rules
-description: 開発ガイドライン、コンポーネント細分化ルール、公開後のGit/DB運用（Additive Changes）のルール
+trigger: always_on
+description: 開発ガイドライン、コンポーネント細分化、Git運用、およびUX・キャッシュ同期の専門ルール
 ---
 
 # Workflow Rules
 
-## Development Guidelines
+※最優先遵守事項（Bunの使用、DAL強制、Biome、Impact Analysis等）については必ず `.agent/rules/core-rules.md` を参照すること。
 
-1. **Atomic Design**: 機能追加は小さく分割し、1機能1コミットを心がける。
-2. Security First: データベース操作は必ずRLSポリシーを介して行う。クライアント側でのフィルタリングに依存せず、DBレベルでセキュリティを担保する。
-2.5. 共有DAL関数の標準利用: 
-   DB操作は必ず `@sitecue/shared` からエクスポートされた以下の関数を経由すること。
-   - `fetchNoteMetadatas`: 一覧取得（Slim）
-   - `fetchNoteContents`: 本文の遅延読み込み（Hydration）
-   - `createNoteEntity` / `updateNoteEntity` / `deleteNoteEntity` / `deleteNotesEntity`: エンティティ操作
-   - **絶対ルール**: アプリ側で新しいテーブル操作を追加する場合は、直接 `supabase.from()` を書くのではなく、必ず `packages/shared/src/dal/` に関数を定義してから呼び出すこと。
-3. Context Awareness: `apps/extension/` と `apps/app/` は異なる環境であることを意識し、混同しない。
-4. **Extension Context**:
-   - 拡張機能内でのデータ再取得（リフェッチ）は、Reactのライフサイクルだけでなく、`chrome.tabs.onUpdated` や `chrome.tabs.onActivated` などのブラウザイベントをトリガーにすること。
-   - バックグラウンドでタブが切り替わった際も正しくコンテキストを追従させる必要がある。
-5. **Development Workflow & Package Management**:
-   - ワークスペースの依存関係解決は必ず **Bun** に一任すること。`npm` や `pnpm` が裏で動いてロックファイルが競合しないよう、エディタ側の自動実行コマンド等にも細心の注意を払うこと。
-   - **検証コマンドの直接実行と型の確認**:
-     パッケージごとの `package.json` に `typecheck` などのスクリプトが定義されていない場合があるため、`bun run -F "*"` のようなモノレポ一括実行コマンドを推測で叩かないこと。
-     型チェックを行う際は、必ず対象のディレクトリ（例: `apps/app/`）に移動するか直接パスを指定して `bun x tsc --noEmit` を実行すること。また、Biome (`biome check`) はフォーマットとLintのみを行い**型の整合性をチェックしない**ため、必ず TypeScript (`tsc --noEmit`) のチェックと併用して開発の安全性を担保すること。
-   - **Next.jsの開発サーバーと検査ツールの競合によるキャッシュ破損**:
-     - **事実**: `bun run dev` (Next.js / Turbopack) が起動している状態で、フォーマッター（Biome）、テストランナー（Vitest）、型コンパイラ（tsc）などを乱れ打ち（連続・並行実行）すると、ファイル監視プロセスが競合し、Next.jsのビルドキャッシュ（`.next` ディレクトリ）が完全に破損する事象が確認されている。これにより、依存関係の解決で無限ループに陥り、CPU稼働率が異常に跳ね上がる（フリーズする）原因となる。
-     - **トラブルシューティング**: 開発サーバー起動時や作業中に不可解なCPUスパイクや無限コンパイルが発生した場合は、コードのバグを疑う前に、まずターミナルで `rm -rf apps/app/.next` を実行してビルドキャッシュを物理削除し、環境をクリーンアップすること。
-   
-6. **Release & Post-Release Workflow (公開後の運用ルール)**:
-   - **ブランチ戦略の維持**: 複雑な運用（`develop`ブランチ等）は避け、引き続き `main` ブランチを本番環境（最新状態）とし、機能開発やバグ修正は `feature/*` や `fix/*` ブランチで行うシンプルな GitHub Flow を維持する。
-   - **バージョンタグ管理**: Chromeウェブストアへの審査提出用ZIPファイルを作成・提出したタイミングで、必ず `main` ブランチの該当コミットにバージョンタグ（例: `v1.0.1`）を打つ。これにより、審査中に緊急のバグ修正（hotfix）が発生した際、安全に該当バージョンからブランチを切って対応できるようにする。
-   - **DB/APIの安全な変更 (Additive Changes Only)**:
-     - 審査のタイムラグによる「本番API/DBと公開中拡張機能のバージョン不整合」を防ぐため、DBやAPIの変更は**「追加（Additive）」のみ**とする（Expand & Contract パターン）。
-     - 既存の拡張機能を壊さない（後方互換性を保つ）よう、既存カラムの削除（DROP）や名前変更（RENAME）、既存APIのレスポンス構造の破壊的変更は**厳禁**とする。
-     - 新機能の追加時は、新しいカラム（NULL許可またはデフォルト値あり）の追加や、新しいAPIエンドポイントの追加のみで対応する。
-7. **Component & Logic Segmentation (コンポーネントの細分化と管理)**:
-   - **階層型UIにおけるアクションの制限**: 階層型UIにおいて、アクションボタン（新規作成や一括操作など）の表示条件には必ず「最深部のコンテキスト（exact等）」を含めること。途中の階層（ページ一覧など）でのアクション表示は誤操作を招くため禁止とする。
-   - 1ファイルが150行を超え始めたら、積極的なコンポーネント分割（UIの切り出し）、またはカスタムフックへのロジック抽出（UIとLogicの分離）を検討すること。
-   - AI自身がコードを生成・修正する際も、1つの巨大なコンポーネントにすべてを詰め込まず、意味のある単位で `components/` 配下にファイルを切り出すこと。
-   - **UIコンポーネント変更の対称性確認**: グローバルなUI（ナビゲーションやアクション）を変更する際は、必ずDesktop（`GlobalSidebar` 等）とMobile（`AppShell`内のFABや`MobileBottomNav` 等）の両方のコンテキストを同時に確認・修正し、実装の乖離を防ぐこと。
-   - **Hooks抽出の基準**: データフェッチ（Supabase等）、認証状態管理、外部API・ブラウザAPI（Chrome Tabs等）との通信などの副作用を伴うロジックは `hooks/` 配下に `useXXX.ts` として分離し、UIコンポーネントを純粋なプレゼンテーション層に保つこと。
-   - **コンテナとプレゼンテーション層の分離**: ページのルートコンポーネント（例: サイドパネルのトップ）はフックから状態を受け取り、切り出したUIコンポーネントへPropsとして渡す「薄いコンテナ」に徹すること。
-   - **NoteItemの最適化と整合性規約**:
-     - テキスト解析やDOM構築等の計算コストが高いプレゼンテーション要素（MarkdownRenderer等）は、D&Dの位置変更や親のステート更新による再描画の波から保護するため、必ず単一プロパティ（`content` 等）のみを依存対象とする独立した `React.memo` コンポーネントへ構造分離し、物理的に再計算をスキップ（0ms化）させること。
-     - NoteItem には必ずカスタム比較関数（arePropsEqual）を渡した `React.memo(NoteItem, arePropsEqual)` を使用し、親コンポーネントの再描画や dnd-kit の sortableAttributes / sortableListeners オブジェクト参照の変更によって全ノートカードが一斉再描画される不全を物理的に防ぐこと。
-     - SidePanel および NoteList 内で定義するイベントハンドラ（onToggleFavorite, onTogglePinned, onDelete, onUpdate, onRequestEdit 等）は、すべて useCallback で固定化し、対象の1件のノートのみがピンポイントで再描画されるようにすること。
-     - 補正ハック（3重 Keep-Alive, ResizeObserver, startTransition, searchQuery デバウンス等）の導入・復活は一切禁止とし、単一 NoteList コンポーネントツリーの健全な再描画制御のみで爆速レスポンスを実現すること。
-8. **UX & Optimistic Updates (心地よい手触りと楽観的UI)**:
-     - **Skeleton UI の表示維持タイマー（フリッカー防止）**:
-       - 高速通信環境下におけるSkeleton UIの一瞬の残像フリッカーを中和するため、主要なコンテキスト切り替え領域（DiaryView等）では、Propsのローディング状態をそのまま流し込まず、UI側で最低200msの表示時間を保証する遅延プレースホルダー制御をカプセル適用すること。
-     - **NoteItem Sticky Show Less ボタン配置ルール**:
-       - NoteItem における展開時の「Show less」カプセルボタンは、必ず `<div className="sticky top-0 z-10 bg-base-bg ...">` ヘッダーコンテナの内部末尾（`absolute top-[44px] left-1/2 -translate-x-1/2`）に配置し、長文ノートのスクロール時もヘッダー下部に固定吸着するオリジナルレイアウトを 100% 正確に維持・再現すること。
-   - ユーザーの思考を妨げない「サクサクとした心地よい手触り」を実現するため、メモの追加・更新・並び替え・削除などのアクションでは、APIのレスポンス完了を待つことによる**ローディング（スピナー等）や画面のチラつきを極力排除**すること。
-   - データの更新処理では、まずローカルのステートを**即時に（楽観的に）更新してUIへ反映**させ、バックグラウンドでDB（Supabase等）へリクエストを飛ばす設計（オプティミスティック更新）を基本方針とする。
-   - 万が一APIリクエストが失敗した場合は、ローカルステートを元の状態にサイレントにロールバックし、トースト等でエラー通知を行う安全設計を徹底すること。
-   - **Ghost Dataの防止と In-Memory State Pattern:**
-   「親レコード（例: 新規ドラフト）がDBに未保存の状態で、子レコード（例: メモ）を作成するUIにおいて、裏側で勝手に親を自動保存（Auto-save）してはならない。必ずブラウザのメモリ上（React State）で一時保持し、ユーザーが明示的に保存ボタンを押したタイミングで、親レコードの生成と子レコードの一括同期（Bulk Insert）を行う設計とすること。」
-   - **データフェッチ戦略: Hybrid Fetching & Background Hydration**:
-      - **事象**: 初期ロード時に全ノートの `content`（本文テキスト）まで取得すると、データ量増大時に通信とメモリを圧迫し、ローディングによるUXの悪化を招く。
-      - **ルール**: 大量のリストデータを取得する際は、初期ロード（`AppShell`等でのグローバルフェッチ）では必ず**メタデータのみ（Slim Fetching）**を取得すること（例: `select("id, url_pattern, created_at...")` で `content` を除外）。重いデータ（本文など）は、メタデータ着信後に即座にバックグラウンドで一括Hydration（遅延読み込み）するハイブリッド戦略を標準とする（詳細は Hybrid Fetching Policy を参照）。
-      - 拡張機能環境における `viewScope`（タブ選択状態）は純粋なUIフィルター変数であり、データフェッチ（通信）のトリガー（依存配列）に含めてはならない。データは初期起動時およびURL変更時に一括インメモリ保持し、タブ切り替えは 0ms インクリメンタル・フィルタリングとして実装すること。
-         - DOM要素の寸法計測（`scrollHeight`, `getBoundingClientRect` 等）を行う際は、`useLayoutEffect` によるブラウザの同期レイアウト強制（Synchronous Layout Thrashing / Reflow）を絶対回避すること。描画フリーズを防ぐため、必ずメインスレッドをブロックしない非同期な `useEffect` で計測を行うか、ドラッグ中（`isPreview`）などの高頻度インタラクション状態では計測処理を 100% 物理スキップさせること。
-         - 大量のコンポーネントやドラッグ＆ドロップ用コンテキスト（@dnd-kit等）が一斉に切り替わるインタラクション層では、並行モード（useTransition）による優先度評価オーバーヘッドやタイムスライシング遅延を防ぐため、常にピュアな同期駆動とセクション別の SortableContext 分割構造を標準設計とすること。同時に、リストコンポーネント（NoteList）およびプレゼンテーション層コンポーネント（NoteItem）は必ず React.memo で保護し、下層に渡す全イベントハンドラは useCallback で参照固定して、不要な再レンダリングや重い再解析（MarkdownRenderer等）を物理的に 100% 遮断すること。
-        - テキスト解析やDOM構築等の計算コストが高いプレゼンテーション要素（MarkdownRenderer等）は、D&Dの位置変更や親のステート更新による再描画の波から保護するため、必ず単一プロパティ（`content` 等）のみを依存対象とする独立した `React.memo` コンポーネントへ構造分離し、物理的に再計算をスキップ（0ms化）させること。
-       - 自由入力テキストを拡張機能ストレージへ退避する際は 300ms デバウンスを介すが、入力変更（onChange）と完全に同期的（0ms）に入力値を ref バッファへも書き込まなければならない。アンマウント、onBlur、および window の pagehide イベント発生時に、この最新の ref バッファからストレージへ即座に Flush（強制同期）させ、レースコンディションによるデータ消失を物理的に防御すること。
-    - **サイレント・リフェッチ (Silent Refetching) の徹底**:
-       - **事象**: 拡張機能内でノート編集中に、裏側で `chrome.tabs.onUpdated` 等が発火してデータが再取得された際、`loading === true` の判定でリスト全体がアンマウントされ、入力中のテキスト（ローカルステート）が吹き飛ぶ致命的なバグが発生した。
-       - **ルール**: バックグラウンド通信や定期更新でデータを再取得する際、すでにデータが表示されている（`notes.length > 0`）場合は、絶対にローディングスピナー等でUI全体を置き換えてはならない。既存のUIを維持したまま裏側で静かにデータを更新し、ユーザーの入力フォーカスと状態を保護すること。
-          - UI先行応答用の二重State（localScope等）を新設・並用することは厳禁とする。ナビゲーション・フィルター状態は必ず単一のSSOT（viewScope等）のみで管理すること。
-          - サイドパネルのリスト表示は、現在アクティブなタブ（viewScope）に対応するノートのみを描画する単一の `<NoteList ... notes={finalFilteredNotes} scope={viewScope}/>` 構造とし、裏側での無駄な非表示 DOM 再計算を完全に防いで検索・フィルターレスポンスを最優先（0ms）化すること。
-          - NoteItem の高さ測定（COLLAPSE_THRESHOLD = 160）は、常に可視状態の単一 DOM 下でシンプルに計算させ、ResizeObserver 等の余分な補正コードを入れず堅牢に保つこと。
-          - `MarkdownRenderer`（またはテキスト解析層）のモジュールスコープ（コンポーネント外）に LRU 仕様の構文解析キャッシュ（markdownCache）を保持し、構文解析計算コストを物理的に 0ms 化すること。
-         - D&Dプレビュー（DragOverlay内等）で描画されるコンポーネント（NoteItem等）は、初期マウント時およびドラッグプレビュー中（isPreview === true）であっても、元のカードの折りたたみ状態（isCollapsed）を 100% 正確に維持・再現すること。
-    - **Hybrid Fetchingの徹底**: 
-   初期ロードは `fetchNoteMetadatas` で軽量に行い、必要になったタイミングで `fetchNoteContents` を用いてサイレントにマージする。UI全体をローディングで隠す「重いフェッチ」を原則禁止する。
-   - **非同期処理（AI機能等）のエラーハンドリングと通知のUX:**
-      - 処理が失敗した場合、ネイティブの `alert` はUXを著しく損ねるため**絶対に使用禁止**とする。代わりに `react-hot-toast` 等のトースト通知（視認性を高めるため `top-center` 配置を標準とする）を用いて、ユーザーに優しいエラーメッセージ（「APIが混み合っています」等）を提示すること。
-      - エラー発生時にテキストエリア等を `disabled` にしてユーザーの入力を妨害してはならない。エラー時は静かにローディング状態のみを解除（ロールバック）し、ユーザーの執筆フローを保護すること。
-      - Ghost Textなどのバックグラウンドで高頻度に走る「Lightタスク」が失敗した場合はトーストを出さずサイレントに失敗させる。ショートカットキー等による「明示的な呼び出し（手動トリガー）」の時のみエラー通知を出すよう、出し分けを徹底すること。
+## 1. Release & Git Workflow
+- **シンプル GitHub Flow**: `main` ブランチを本番最新とし、機能開発・バグ修正は `feat/*` または `fix/*` ブランチで行う。
+- **バージョンタグ管理**: Chromeストア審査提出時に `main` ブランチのコミットにバージョンタグ（例: `v1.0.1`）を付与すること。
 
-   - **モーダル・イン・モーダルの原則禁止**: モバイル対応などでドロワー（Drawer/Sheet）を使用する際、その内部でさらにPopoverやDialogを深くネストする設計はフォーカストラップの競合を招くため原則禁止とする。状態変更はインライン展開（アコーディオン）などの代替UIで解決すること。
+## 2. Component & Logic Segmentation (細分化基準)
+- **150行ルール**: 1ファイルが150行を超え始めたら、コンポーネント分割またはカスタムフック (`hooks/useXXX.ts`) への抽出を行うこと。
+- **コンテナとプレゼンテーションの分離**: ページルートはフックから状態を受け取り、切り出した UI コンポーネントへ Props 渡す「薄いコンテナ」に徹すること。
+- **`NoteItem` の再描画最適化**: 計算コストの高い表示要素は独立した `React.memo` へ分離し、`arePropsEqual` で厳格比較すること。イベントハンドラはすべて `useCallback` で参照固定すること。
 
-9. **Local Development & Ports (ローカル開発環境のネットワーク固定化)**:
-   - APIのポート `8787` への厳格な固定、および Next.js 等の実機テスト時の IPv4 (`127.0.0.1`) のすれ違い防止などを含む具体的なネットワークルールについては、`.agent/skills/architecture/SKILL.md` に記載の「ローカル開発環境のネットワーク固定化」を参照し、厳守すること。
-
-## 10. State Management & Caching Strategy (状態管理の完全分離とキャッシュ戦略)
-
-現代のReact開発における「状態管理の責任範囲の切り分け」を究極のベストプラクティスとして厳守すること。ZustandとTanStack Queryの責務を混同すると、キャッシュの不整合や意図しないUIの初期化（リスト消失など）を引き起こす致命的なバグに繋がる。
-
-- **TanStack Query (サーバー状態・Server State の管理):**
-  - **責務:** データベース（Supabase等）から取得したデータ、検索結果、APIのローディング状態（`isFetching` / `isLoading`）、キャッシュの有効期限管理。
-  - **絶対ルール:** APIから取得した結果（例: `searchResults`）を絶対にZustandのStoreに格納してはならない。検索やフィルタリングを行う際は、URLパラメータ（`q`, `tags`等）を `useSearchParams` で取得し、それを直接TanStack Queryの `Query Key` に含めることで、URLとキャッシュ状態を完全に同期させること。
-
-- **Zustand (ローカルUI状態・Client State の管理):**
-  - **責務:** データベースには保存されない、純粋なブラウザ上のUIステートの管理。
-  - **具体例:** 「現在選択中のノートID（`selectedNoteId`）」、「編集中テキストの未保存フラグ（`isDirty`）」など。
-
-- **Slim Fetching とキャッシュの一括同期 (Cache Normalization):**
-  - **事象:** 初期ロード時はメタデータのみを取得（Slim Fetching）し、後から本文（`content`）を遅延フェッチしてキャッシュを更新する際、`queryClient.setQueryData` で特定のキー（例: `['notes']`）のみを更新すると、派生キー（例: `['notes', 'search', 'keyword']`）のキャッシュに本文が同期されず、画面が空振りする問題が発生する。
-  - **絶対ルール:** 遅延フェッチなどで取得した詳細データを既存のキャッシュリストにマージする際は、完全一致の `setQueryData` ではなく、**必ず部分一致（プレフィックス一致）の `setQueriesData` を使用**し、関連するすべての派生キャッシュ（検索結果一覧など）にデータを一斉分配・同期（正規化）すること。
-    ```typescript
-    // ❌ Bad: 通常のノート一覧しか更新されない
-    queryClient.setQueryData<Note[]>(['notes'], updater);
-
-    // ✅ Good: ['notes'] から始まるすべてのキャッシュ（検索結果等）を透過的に一括更新する
-    queryClient.setQueriesData<Note[]>({ queryKey: ['notes'] }, updater);
-    ```
-  - **環境ごとの境界（特例）**: 上記の TanStack Query によるキャッシュ一括分配は App Basecamp（Web側）の標準アーキテクチャとする。軽量さを優先する Extension 環境（`apps/extension/`）においてはライブラリに依存せず、標準の `useState` とインメモリ・マージを用いたハイドレーション戦略を特例として許可・標準とする。
-
-- **TanStack Query キャッシュの双対型 (Array vs Object) インメモリ同期抽出規約**:
-  単一データ抽出フック（`useFetchDraft` 等）の `initialData` 同期抽出ロジックでは、対象エンティティのキャッシュが「配列形式 (`Draft[]`)」と「オブジェクト形式 (`{ drafts: Draft[] }`)」のどちらの型で保持されているかを必ず型ガード（`Array.isArray(cached)` および `"drafts" in cached`）で分岐評価し、マウント第1フレーム（0ms）から確実にインメモリ復元できるように実装すること。
-
-  - **Search Trigger Optimization (検索実行の意図的制御とコンテキストの分離)**:
-    - グローバル検索（SearchModal等）: アプリ全体の膨大なデータを対象とするため、入力欄の onChange で都度検索を実行せず、「Enterキーの押下」や「送信ボタンのクリック」を明示的なトリガーとしてAPI通信を制御すること。
-    - ローカル絞り込み検索（中ペイン MiddlePaneList）: すでにメモリ上に展開されているデータを対象とするため、裏側での不要なURLナビゲーションや再フェッチ通信を一切発生させず、完全にブラウザ側のローカルState（inputValue）のみに連動した「100%インメモリ・インクリメンタルサーチ（0ms消し込み）」として実装し、UXを最大化すること。
-
-- **URL Params as Single Source of Truth (ドリルダウンとコンテキストの管理)**:
-  - フォルダの階層移動（ドリルダウン）や、検索結果からの特定のリストへのジャンプ（コンテキストジャンプ）を行う際、現在の階層状態をZustand等のクライアントステートで管理してはならない。
-  - **絶対ルール**: 階層や表示ビューの切り替えは、すべて `URLSearchParams` (`?domain=...`, `?exact=...` 等) を唯一の情報源（SSOT）として設計し、どのURLにアクセスしても意図したUI階層が正確に復元される堅牢なルーティングを構築すること。
-  - **検索結果の二次フィルタリング**: 検索実行中（`q`や`tags`が存在）であっても、URLに `domain` や `exact` のコンテキストパラメータが存在する場合は、それは『ユーザーが検索結果からさらに特定コンテキストへドリルダウンした結果』であるとみなし、取得した検索結果に対して必ず二次フィルタリングを適用して表示を絞り込むこと。
-
-  ##### 【D&D並び替え時におけるTanStack Queryキャッシュ配列の「ソート駆動同期」の掟】
-  D&D（ドラッグ＆ドロップ）や明示的な順序変更によって要素の `sort_order`（Fractional Indexing値）を更新する際、`useMutation` の `onSuccess` ライフサイクル内で**単に対象オブジェクトを `map` で差し替えるだけの数値更新を行ってはならない**。
-  
-  - **理由:** キャッシュ内のオブジェクトの数値が変わっても、配列全体のインデックス構造（要素の並び順）がドラッグ前の古い状態のままで保持されてしまうため。その直後にサーバーサイドの再フェッチ（`router.refresh()`）が走ると、古い並び順の Props が降ってきた瞬間にクライアントの状態が強制上書きされ、画面の激しいカクつきや巻き戻り（スナップバック）を引き起こす。
-  - **厳守事項:** 値を `map` で差し替えた直後に、**必ずサーバーおよびデータベースと100%同一の公式ソート規約に基づいて、配列全体をインメモリで再整列（`.sort()`）させてからキャッシュを確定させること**。これは通常配列（`Array.isArray(old)`）だけでなく、検索結果などの派生キャッシュオブジェクト（`"notes" in old` 等）に対しても透過的に一括適用しなければならない。
-
-## 11. Refactoring & Code Smell Detection (リファクタリングとコードの匂い)
-
-AIが実装や修正を提案する際、以下の「コードの匂い（Code Smell）」を検知した場合は、局所的なパッチ修正（Workaround）に留まらず、アーキテクチャレベルでのリファクタリング（Best Practice）を提案すること。
-
-- **コードの重複 (Duplicated Code)**: 複数のコンポーネントに似たような `useEffect` やイベントリスナー（例: スクロール監視）が存在する場合。-> *Centralized Approach への移行を提案する。*
-- **不自然なDOM要素 (Unnatural DOM)**: レイアウトの帳尻合わせのためだけに使われている空の `div`（スペーサー）や、過剰な `absolute` 配置がある場合。-> *CSSの流れ（Flow）を利用した自然なレイアウトへの移行を提案する。*
-- **状態の不一致 (State Inconsistency)**: URLパラメータの更新とZustandのステート更新が同時に（または片方だけ）行われている場合。-> *URLをSSOTとした設計への修正を提案する。*
-
-## 12. Layout & Positioning Robustness (レイアウトとポジショニングの堅牢性)
-
-- **AppShellのモバイル原則**: モバイル環境のAppShellは「3段ボックス構造（Header/Content/Nav）」を基本とし、JSによる動的な高さ変更やスクロール監視を伴う要素の隠蔽ロジック（hide-on-scroll等）はレイアウト崩れとパフォーマンス低下を招くため原則禁止とする。
-
-- **検索入力における Concurrent Rendering 規約**:
-  検索窓の入力文字列（searchQuery）の反映は 0ms 最優先とし、リストのフィルタリング計算には React 公式標準の `useDeferredValue(searchQuery)` を使用して優先度分離を行うこと。これにより入力操作の手触りを100%保護すること。
-- **タブ切り替え（viewScope）とリスト描画の完全分離規約**:
-  タブボタンの切り替え（viewScope）は 0ms 最優先で即座にUIへ反映させ、裏側での重いリスト計算・レンダリングと連動させないこと。切り替え先のノート件数が0件と確定している場合は、未訪問であってもスケルトン表示を挟まず 0ms で即座に空状態を表示させること。
-- **初期非表示DOM（Favorites等）における scrollHeight > 0 ガード規約**:
-  `NoteItem.tsx` における `isOverflowing`（折りたたみ判定）は、`contentRef.current.scrollHeight > 0`（要素が可視化状態）の場合のみステートを更新・評価すること。初期状態が CSS `hidden`（Favoritesアコーディオン等）の際に `scrollHeight === 0` によって `isOverflowing = false`（全文表示）へ破棄されるのを防止すること。
-- **NoteItem の arePropsEqual 正確比較規約**:
-  `arePropsEqual` カスタム比較関数では、`prevProps.note === nextProps.note` だけでなく、`note.is_expanded`, `note.is_favorite`, `note.is_pinned`, `note.is_resolved`, `note.content`, `note.note_type` 等 of 個別プロパティ値の同値比較を厳格に行い、Favoritesリスト表示時を含めて「Read more / Show less」のトグルが100%正確に再描画されるようにすること。
-- **タブボタンUI即時着色（0ms）と重いリスト描画処理の Concurrent 非同期分離規約**:
-  タブ切り替え操作時、FilterBar に渡すアクティブタブState（viewScope）は 0ms 最優先で即座に更新してボタンを速やかに着色させ、ノートリストのフィルタリング計算および NoteList への渡しには React 公式の `useDeferredValue(viewScope)` を適用して非同期遅延化（Concurrent Rendering）すること。
-- **Pageタブを含む全スコープ Cold Start スケルトン保証規約**:
-  `visitedScopesRef` の初期値は空（new Set()）とし、サイドパネル起動時の初回表示（Pageタブ含む）では必ず最小 200ms のスケルトン（isScopeSwitching）を適用して裏で安定してツリー構築を完了させること（対象ノート件数が 0 件確定時のみスケルトンスキップで 0ms 空状態表示とすること）。
-- **高負荷UI描画における UI State と Render State の Concurrent 非同期分離汎用規約**:
-  入力打鍵、タブ選択、フィルターボタン押下などのUI状態（viewScope, filterType, searchQuery, selectedTag, showResolved 等）は 0ms で即座に更新してUIボタンを最優先で着色・応答させること。重い再計算やDOM構築を伴う子コンポーネント（NoteList 等）への Props 伝播やフィルタリングロジック参照には、必ず `useDeferredValue` で一括遅延化させた Render State（deferredFilterState）を使用し、操作レスポンスを物理的に100%保護すること。
-- **大量ノート描画における Viewport Lazy (content-visibility: auto) 規約**:
-  `NoteItem.tsx` の最外形要素スタイルの `contentVisibility`（inline style: `contentVisibility: "auto"`）を活用し、ビューポート外に存在するノートカードのHTML解析・レイアウト計算をブラウザレベルで自動スキップさせること。
-- **DiaryView 日付切替における Concurrent 非同期分離規約**:
-  `DiaryView.tsx` において、日付カプセルボタンのアクティブ判定（UI応答）は Props の `selectedDiaryDate` を参照して 0ms 即時着色させ、ヘッダーの日付テキスト表示および内部の非同期計算・表示参照には `useDeferredValue(selectedDiaryDate)` を適用すること。これによりボタン応答と重いコンテンツ描画を物理的に分離し、既存の 200ms スケルトン保持（SKELETON_HOLD_DURATION）と両立させること。
+## 3. UX, Optimistic Updates & Cache Synchronization
+- **サイレント・リフェッチ (Silent Refetching)**: バックグラウンドでのデータ再取得時、既にデータが表示されている場合は全体ローディングスピナーを出さず、入力フォーカスと状態を保持すること。
+- **TanStack Query キャッシュのインメモリ再整列 (`.sort()`)**: D&D 等で `sort_order` を更新して手元キャッシュ (`setQueriesData`) を差し替えた直後、**必ず DB と同一の公式ソート規約に基づき配列全体を `.sort()` で再整列させてから確定させること**（スナップバック防止）。
+- **非同期ミューテーションと RSC 同期の直列化**: `router.refresh()` を呼び出す前に、必ず `mutateAsync` を用いて通信と手元キャッシュ分配の完了を `await` で待機すること。
+- **Concurrent Rendering 検索反映**: 検索窓の文字入力（`searchQuery`）は 0ms 最優先とし、リストフィルタリング計算には `useDeferredValue(searchQuery)` を適用して入力遅延を防ぐこと。

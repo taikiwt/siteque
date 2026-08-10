@@ -2,84 +2,32 @@
 trigger: always_on
 ---
 
-# Project: sitecue
+# Project: sitecue Global Rules
 
-# 🚨 開発ルールの絶対遵守事項 (CRITICAL: PACKAGE MANAGER)
+※最優先遵守事項（Package Manager, DAL, Biome, 通信経路等）については必ず `.agent/rules/core-rules.md` を参照し遵守すること。
 
-- 本プロジェクトのパッケージマネージャーは **Bun** です。
-- **絶対に `npm`, `yarn`, `pnpm` を使用しないでください。**
-- パッケージの追加、インストール、スクリプトの実行は、必ず `bun add`, `bun install`, `bun run` を使用してください。
-- （AIエディタへ）自動コマンド提案で `npm install` や `npm run build` を提示することは固く禁じます。
-
-## Overview
-
-sitecueは、Webで日々活動する人向けの「コンテキスト認識型メモアプリ」です。
-現在開いているURLやドメインに紐付いたメモを瞬時に表示・記録する「Chrome拡張機能」と、蓄積したメモを俯瞰して本格的な執筆や情報整理を行うWebアプリケーション「App Basecamp」の両輪で動作します。
-
-## Architecture Overview
-
+## 1. Overview & Architecture
+sitecueは、Web活動者向けの「コンテキスト認識型メモアプリ」です。
 - **Monorepo**: Turborepoを用いたモノレポ構成（`apps/` や `packages/` で管理）。
-- **Extension**: React + WXT + Tailwind CSS (Chrome Extension Manifest V3) (Path: `apps/extension/`)
-- **App Basecamp**: Next.js (App Router) powered by **OpenNext** on **Cloudflare Workers** (Path: `apps/app/`)
-- **API**: Cloudflare Workers + Hono (Path: `apps/api/`)
+- **Extension**: React + WXT + Tailwind CSS (Chrome Extension Manifest V3) (`apps/extension/`)
+- **App Basecamp**: Next.js (App Router) powered by OpenNext on Cloudflare Workers (`apps/app/`)
+- **API**: Cloudflare Workers + Hono (`apps/api/`)
 - **Database**: Supabase (PostgreSQL)
 
-## Development Methodology
+## 2. Type Definition Rules (型定義の絶対ルール)
+- **自動生成ファイルの保護**: `packages/shared/src/types/supabase.ts` は `bun x supabase gen types` で自動生成されるファイルである。AIによる直接手動編集は**絶対禁止**。
+- **型のラップとSSOTの集約**: DBの自動生成型で単なる `string` になる型（例: `sitecue_notes` の `scope`）は、すべて `packages/shared/src/types/app.ts` にて厳密なユニオン型（`'exact' | 'domain' | 'inbox'`）として定義・ラップされている。型定義の情報源はここを唯一の正（SSOT）とする。
+- **リソース制限定数のSSOT集約**: リソース制限（ノート・ドラフト・AI等）は、必ず `@sitecue/shared`（`packages/shared/src/utils/limits.ts`）を参照すること。
+- **コンポーネントからの参照**: UIコンポーネントやHooksから型を `import` する際は、必ず `@sitecue/shared` からインポートすること。
 
-- **AI-TDD (AI主導テスト駆動開発)**:
-  フロントエンド（App Basecamp/Extension）のUIコンポーネントや複雑なロジックを実装する際は、実装コードを書く前に必ず `Vitest` と `React Testing Library` を用いたテストコードを先に作成し、そのテストをパスするように実装を行うこと。
+## 3. Code Quality & Biome Supplementary Rules
+※基本原則（`any` 禁止、`!` 禁止、`useEffect` 依存配列、`noArrayIndexKey`）は `core-rules.md` を参照。
+- **アクセシビリティ (a11y)**: `<button>` には必ず `type` 属性 (`type="button"` または `type="submit"`) を明記。装飾用 `<svg>` には `aria-hidden="true"` を付与すること。
+- **未使用変数**: コールバック引数などで意図的に使用しない変数は、アンダースコア `_` を付与すること（例: `_err`）。
+- **型チェックの徹底**: Biomeによるチェックに加え、コード修正後は対象ワークスペースにて `bun x tsc --noEmit` を実行して型整合性を必ず確認すること。
 
-## UI/UX Design Principles & Rules
-
-- **UI/UXに関する絶対的なルール（引き算の美学、セマンティックカラー、英語化の原則、アイコンの統一など）は、すべて `.agent/rules/ui-rules.md` に集約されています。**
-- AIエディタがUIコンポーネントを生成・修正する際は、必ず上記のファイルを参照し、プロジェクトのデザイン理念と完全に一致させてください。
-
-## ⚠️ Type Definition Rules (型定義の絶対ルール)
-
-- **自動生成ファイルの保護**: `packages/shared/src/types/supabase.ts` は `bun x supabase gen types` によって自動生成されるファイルです。**AIによる手動での直接編集は絶対に禁止**します（次回の生成時に上書きされ、型が破綻するため）。
-  - DBスキーマに変更があった場合は、必ずローカルDBにマイグレーション（`.sql`）を適用した上で、ターミナルから `bunx supabase gen types typescript --local > packages/shared/src/types/supabase.ts` を実行して一括で上書きしてください。
-- **型のラップとSSOTの集約**: DBの `CHECK` 制約などで自動生成ファイル上で単なる `string` になってしまう型（例：`sitecue_notes` の `scope` カラム）は、すべて共通パッケージ `packages/shared/src/types/app.ts` にて厳密なユニオン型（例：`'exact' | 'domain' | 'inbox'`）として定義・ラップされています。プロジェクトにおける型定義の情報源はここを唯一の正（SSOT）とします。
-- **リソース制限定数のSSOT集約**: リソース制限定数（ノート・ドラフト・AI等）は、必ず `@sitecue/shared`（`packages/shared/src/utils/limits.ts`）を単一の信頼できる情報源（SSOT）として参照すること。
-- **コンポーネントからの参照**: UIコンポーネントやHooks（Extension/App Basecamp問わず）から型を `import` する際は、ローカルの型定義ファイルを直接参照せず、必ず `@sitecue/shared` からインポートして使用してください。
-
-## 🧹 Linting & Code Quality Rules (Biome 絶対遵守)
-
-本プロジェクトは **Biome** を用いた非常に厳格なLintルールを敷いています。AIによるコード生成・修正時は、エラーを出さないために以下のルールを**必ず遵守**してください。
-
-- **`any` 型の禁止**: `any` の使用は厳禁です。未知の型（`catch (e)` など）を受け取る場合は `unknown` を使用し、内部で適切に型アサーション（`const err = e as Error;`）を行ってください。
-- **Non-Null Assertion (`!`) の禁止**: 変数末尾の `!` による無理な型強制は絶対にしないでください。`null` や `undefined` の可能性がある場合は、必ず Nullish Coalescing (`?? ""`) やオプショナルチェーン (`?.`) を用いて安全なフォールバックを実装してください。
-- **React Hooks の依存配列（Exhaustive Deps）**: `useEffect`, `useCallback`, `useMemo` 内で使用している外部変数や関数は、**すべて漏れなく**依存配列（`[]`）に含めてください。無限ループや Stale Closure を防ぐための絶対条件です。
-- **アクセシビリティ (a11y) の徹底**:
-  - Reactで `<button>` を出力する際は、必ず `type` 属性 (`type="button"` または `type="submit"`) を明記してください。
-  - アイコン等で使用する装飾用の `<svg>` 要素には、必ず `aria-hidden="true"` を付与してください。
-- **未使用変数のプレフィックス**: `catch` ブロックのエラー変数やコールバックの引数など、宣言したものの意図的に使用しない変数は、必ず名前にアンダースコア `_` を付けてください（例: `_err`, `_nextPath`）。
-- **型チェックとパス解決の徹底 (Type Checking)**:
-  - Biomeは高速な反面、「`import` 先のファイルが存在するか」「型が一致しているか」をチェックしません。
-  - コードの修正後は、Biomeによるチェックに加えて、必ず対象のワークスペース（例: `apps/extension/`）に移動し、`bunx tsc --noEmit` を実行して、モジュール解決エラーや型の不整合が発生していないか確認してください（`package.json` に typecheck スクリプトは登録されていません）。
-- **配列インデックスキー指定の禁止 (`noArrayIndexKey`)**: Skeleton UI などの静的なプレースホルダーを複数描画する際、順序が絶対に変らない要素であっても `Array.from().map((_, i) => ...)` のようにインデックス `i` をそのまま `key={i}` に指定することは厳禁です。警告を `// biome-ignore` で適当に握りつぶすことや、SSRでの Hydration Mismatch を招く `crypto.randomUUID()` 等の動的生成へ逃げることも絶対に禁止します。必ず『一意な静的文字列からなる固定配列（例: `["skel-1", "skel-2", ...]`）を用意してマッピングする構造』を標準設計としてください。
-
-## 🔗 URL & Data Handling Rules (データとURLの取り扱い)
-
-- **URLパースの安全性 (Safety Parsing)**: データベースの `url_pattern` には、URLだけでなく `inbox` などの特殊な文字列が入る仕様になっています。そのため `new URL()` を使用する際は、`Invalid URL` エラーによるアプリのクラッシュを防ぐため、必ず `try-catch` を用いた安全なパース機構（例: `getSafeUrl` 等）を経由してください。
-- **表記揺れの排除 (URL Normalization)**: URLを用いたデータのグルーピングやフィルタリングを行う際は、生の文字列をそのまま比較せず、必ず共通の正規化ユーティリティ（例: `normalizeUrlForGrouping`）を使用し、`www.` や末尾の `/` を除去して統一的に扱うこと。
-
-- **URLコンテキスト（検索・絞り込み状態）の安全な引き継ぎ**:
-  - **事象**: グローバル検索がアクティブな状態で、中ペインのドリルダウンリストから別のドメインやページをクリックした際、生成されたリンク（`href`）が現在の検索パラメータを含んでいなかったため、クリックと同時に検索状態が意図せずリセットされてしまうバグが発生した。
-  - **ルール**: アプリケーション内でナビゲーションリンク（`href`）を構築する際、現在のURLにグローバルな状態（`q` や `tags` などの検索・フィルターパラメータ）が存在する場合は、それを意図的にリセットするアクションでない限り、新しいURLにもパラメータを必ず引き継ぐこと。適宜 `URLSearchParams` を用いて再構築するヘルパー関数などを使用し、コンテキストの欠落を防ぐこと。
-
-## 🔍 インパクト・アナリシス (Impact Analysis)
-
-実装を開始する前に、以下の「インパクト・アナリシス」を必ず実施し、その結果を思考プロセスまたはユーザーへの報告に含めること。
-
-- **依存グラフの確認**: 変更対象のコンポーネントや関数が、どのファイルから参照されているか、またはどのファイルに依存しているかを確認する。
-- **副作用 (Side Effects) の予測**:
-  - **UI/UX**: 他の画面やコンポーネントのレイアウト、アクセシビリティ、インタラクションに予期せぬ影響を与えないか。
-  - **データ/状態**: 共有ステートやキャッシュ（TanStack Query等）、URLパラメータの整合性が壊れないか。
-  - **パフォーマンス**: レンダリング回数の増加や重い処理の導入による遅延が発生しないか。
-- **リスク提示**: 破壊的変更や影響範囲が広い場合は、実装前に必ずユーザーへリスクと代替案を提示すること。
-
-- **DB Migration Accountability**: AIはマイグレーションファイル（.sql）の作成までを行い、適用コマンド（reset/gen types）を実行したか、ユーザーに手動実行を依頼するかを完了報告時に明示すること。
-
-## ローカル・グローバル検索のコンテキスト最適化（Context-Aware Search Matching）
-- グローバル検索は、永続化されたコアデータ（本文、正規化日付）のみをマッチング対象とし、高速性とノイズ排除を最優先すること。
-- ローカル絞り込み（中ペイン）は、すでにコンテキストが狭められているため、UX向上のために「UI表示値（動的ラベル・曜日・日）」も透過的に検索パターンスペースにブレンドして一致判定を行うこと。
+## 4. Impact Analysis (インパクト・アナリシス)
+実装を開始する前に、以下のインパクト・アナリシスを実施し、その結果を思考プロセスに含めること。
+- **依存グラフの確認**: 変更対象のコンポーネントや関数が参照されている範囲（Extension / App双方含む）を特定する。
+- **副作用の予測**: UI/UX（レイアウト・アクセシビリティ）、データ/状態（TanStack Queryキャッシュ・URLパラメータ）、パフォーマンスへの影響を予測する。
+- **DB Migration**: マイグレーション作成時は、適用コマンドの実行依頼または手動実行報告を完了時に明記する。
