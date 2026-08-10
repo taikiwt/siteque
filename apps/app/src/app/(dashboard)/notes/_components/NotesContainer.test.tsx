@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { describe, expect, it, vi } from "vitest";
 import { useFetchNotes } from "@/hooks/useNotesQuery";
@@ -231,5 +232,33 @@ describe("NotesContainer - Skeleton & Cache Strategy", () => {
 		expect(middlePane.getAttribute("data-loading")).toBe("true");
 
 		vi.useRealTimers();
+	});
+
+	it("入力パラメータのDeferred化によりヘッダーUIが0msで正常レンダリングされること", async () => {
+		vi.mocked(useSearchParams).mockReturnValue(
+			new URLSearchParams("view=domains") as unknown as ReturnType<typeof useSearchParams>,
+		);
+
+		vi.mocked(useFetchNotes).mockReturnValue({
+			data: [],
+			isLoading: false,
+		} as unknown as ReturnType<typeof useFetchNotes>);
+
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<NotesContainer />
+			</QueryClientProvider>,
+		);
+
+		await waitFor(() => {
+			expect(
+				screen.getByTestId("middle-pane") ||
+					screen.getByRole("navigation", { name: "ビュー切り替え" }),
+			).toBeInTheDocument();
+		});
 	});
 });

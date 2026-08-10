@@ -297,7 +297,7 @@ export function GlobalNewNoteDialog() {
 								onPaste={onMarkdownPaste}
 								placeholder="Write down your thoughts for today... (No title required)"
 								className={cn(
-									"w-full flex-1 h-full text-base bg-transparent text-action border-none focus:outline-none resize-none font-sans break-words [overflow-wrap:anywhere] p-0 overflow-y-auto transform-gpu block",
+									"w-full flex-1 h-full text-base bg-transparent text-action border-none focus:outline-none resize-none font-sans break-words p-0 overflow-y-auto block",
 									isSubmittingAnimation
 										? "transition-all duration-400 ease-out translate-x-full opacity-0 pointer-events-none"
 										: "transition-none",

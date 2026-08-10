@@ -110,7 +110,7 @@ describe("GlobalNewNoteDialog Component", () => {
 		vi.useRealTimers();
 	});
 
-	it("Daily Diaryモードにおいて、送信時にLogging...表示になり350ms後にダイアログが閉じること（toast.successなし）", () => {
+	it("Daily Diaryモードにおいて、送信時にLogging...表示になり500ms後にダイアログが閉じること（toast.successなし）", () => {
 		useLayoutStore.getState().openGlobalNewModal("diary");
 
 		renderWithProviders(<GlobalNewNoteDialog />);
@@ -133,14 +133,14 @@ describe("GlobalNewNoteDialog Component", () => {
 		);
 
 		act(() => {
-			vi.advanceTimersByTime(350);
+			vi.advanceTimersByTime(500);
 		});
 
 		expect(useLayoutStore.getState().globalNewModal.isOpen).toBe(false);
 		expect(toast.success).not.toHaveBeenCalled();
 	});
 
-	it("Quick Noteモードにおいて、送信時にSaving...表示になり350ms後にダイアログが閉じること", () => {
+	it("Quick Noteモードにおいて、送信時にSaving...表示になり500ms後にダイアログが閉じること", () => {
 		useLayoutStore.getState().openGlobalNewModal("note");
 
 		renderWithProviders(<GlobalNewNoteDialog />);
@@ -161,10 +161,22 @@ describe("GlobalNewNoteDialog Component", () => {
 		);
 
 		act(() => {
-			vi.advanceTimersByTime(350);
+			vi.advanceTimersByTime(500);
 		});
 
 		expect(useLayoutStore.getState().globalNewModal.isOpen).toBe(false);
 		expect(toast.success).not.toHaveBeenCalled();
+	});
+
+	it("Daily Diaryモード時にtextareaが break-words を保持し transform-gpu を含まないこと", () => {
+		useLayoutStore.getState().openGlobalNewModal("diary");
+
+		renderWithProviders(<GlobalNewNoteDialog />);
+
+		const textarea = screen.getByPlaceholderText(/Write down your thoughts/i);
+		expect(textarea).toBeInTheDocument();
+		expect(textarea.className).toContain("break-words");
+		expect(textarea.className).not.toContain("transform-gpu");
+		expect(textarea.className).not.toContain("[overflow-wrap:anywhere]");
 	});
 });

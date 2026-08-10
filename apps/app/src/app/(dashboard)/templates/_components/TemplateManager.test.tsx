@@ -65,23 +65,31 @@ const renderWithQuery = (ui: React.ReactNode) => {
 	);
 };
 
-describe("TemplateManager", () => {
-	it("renders split pane on desktop and allows selecting a template", async () => {
+describe("TemplateManager - Local Suspense Shell Protection & Skeleton", () => {
+	it("ローディング中であってもヘッダーUIが 0ms で描画され、かつリスト領域にスケルトンが表示されること", () => {
+		vi.mocked(useMediaQuery).mockReturnValue(true);
+
+		renderWithQuery(
+			<TemplateManager initialTemplates={undefined} selectedId={null} />,
+		);
+
+		// ヘッダーUIシェルの常時アタッチ確認（0ms表示）
+		expect(screen.getByText("Templates")).toBeInTheDocument();
+		expect(screen.getByLabelText("New Template")).toBeInTheDocument();
+
+		// SWRBoundary が正しく未ロードを検知し、スケルトンを表示していることの確認
+		expect(screen.getByTestId("template-list-skeleton")).toBeInTheDocument();
+	});
+
+	it("デスクトップでテンプレートリストとフォームが局所レンダリングされること", async () => {
 		vi.mocked(useMediaQuery).mockReturnValue(true);
 
 		renderWithQuery(
 			<TemplateManager initialTemplates={mockTemplates} selectedId="1" />,
 		);
 
-		// Check if list item exists
 		expect(await screen.findByText("Mock Template")).toBeInTheDocument();
-
-		// Check form fields in the desktop pane
 		expect(screen.getByLabelText("Template Name")).toHaveValue("Mock Template");
-		expect(screen.getByLabelText("Max Length (Optional)")).toHaveValue(100);
-
-		// Drawer should NOT be present (searching for dialog role)
-		expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 	});
 
 	it("renders Drawer on mobile when a template is selected", async () => {

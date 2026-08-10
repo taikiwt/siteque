@@ -1,11 +1,5 @@
-const CACHE_NAME = "sitecue-app-shell-v4";
-const STATIC_ASSETS = [
-	"/",
-	"/notes",
-	"/logo.svg",
-	"/icon.ico",
-	"/apple-icon.png",
-];
+const CACHE_NAME = "sitecue-app-shell-v6";
+const STATIC_ASSETS = ["/logo.svg", "/icon.ico", "/apple-icon.png"];
 
 self.addEventListener("install", (event) => {
 	event.waitUntil(
@@ -30,7 +24,6 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-	// 外部ドメインや特殊スキームに対する例外安全バイパス
 	if (!event.request.url.startsWith(self.location.origin)) {
 		return;
 	}
@@ -38,7 +31,16 @@ self.addEventListener("fetch", (event) => {
 	if (event.request.method !== "GET") return;
 
 	const url = new URL(event.request.url);
+
+	// ★ 最優先バイパスルール: 画面遷移（HTML取得）および RSC / API / 認証通信は
+	// SW で一切処理・横取りせず、100% サーバー (middleware.ts) へ直接到達させる。
+	const isNavigation =
+		event.request.mode === "navigate" ||
+		event.request.headers.get("accept")?.includes("text/html");
+
 	if (
+		isNavigation ||
+		url.searchParams.has("_rsc") ||
 		url.pathname.startsWith("/api/") ||
 		url.pathname.startsWith("/auth/") ||
 		url.pathname.endsWith(".webmanifest")
@@ -46,31 +48,7 @@ self.addEventListener("fetch", (event) => {
 		return;
 	}
 
-	const isDocument =
-		event.request.mode === "navigate" ||
-		event.request.headers.get("accept")?.includes("text/html");
-
-	if (isDocument) {
-		event.respondWith(
-			fetch(event.request)
-				.then((networkResponse) => {
-					if (networkResponse && networkResponse.status === 200) {
-						const responseToCache = networkResponse.clone();
-						caches.open(CACHE_NAME).then((cache) => {
-							cache.put(event.request, responseToCache);
-						});
-					}
-					return networkResponse;
-				})
-				.catch(() => {
-					return caches.match(event.request).then((cachedResponse) => {
-						return cachedResponse || caches.match("/");
-					});
-				}),
-		);
-		return;
-	}
-
+	// ロゴ・アイコン等の静的アセットのみ Cache-First で処理
 	event.respondWith(
 		caches
 			.match(event.request)

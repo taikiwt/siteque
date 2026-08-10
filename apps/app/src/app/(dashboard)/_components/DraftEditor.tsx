@@ -4,7 +4,7 @@ import type { Draft, Note, Template } from "@sitecue/shared";
 import { APP_LIMITS, extractTags } from "@sitecue/shared";
 import { ArrowLeft, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import {
 	Panel,
@@ -648,23 +648,29 @@ export default function DraftEditor({
 											className="bg-white/80 backdrop-blur shadow-sm border border-neutral-100"
 										/>
 									</div>
-									<SWRBoundary
-										data={draftId ? activeDraft : activeTemplate || content}
-										isLoading={!!draftId && isDraftLoading && !activeDraft}
+									<Suspense
 										fallback={
 											<StudioEditorSkeleton hasDraftId={!!targetDraftId} />
 										}
 									>
-										{() => (
-											<StudioEditor
-												value={content}
-												onChange={(val) => setContent(val)}
-												placeholder="Write down your thoughts..."
-												isDirty={isDirty}
-												onGenerateHint={handleGenerateHint}
-											/>
-										)}
-									</SWRBoundary>
+										<SWRBoundary
+											data={draftId ? activeDraft : activeTemplate || content}
+											isLoading={!!draftId && isDraftLoading && !activeDraft}
+											fallback={
+												<StudioEditorSkeleton hasDraftId={!!targetDraftId} />
+											}
+										>
+											{() => (
+												<StudioEditor
+													value={content}
+													onChange={(val) => setContent(val)}
+													placeholder="Write down your thoughts..."
+													isDirty={isDirty}
+													onGenerateHint={handleGenerateHint}
+												/>
+											)}
+										</SWRBoundary>
+									</Suspense>
 									<div className="flex justify-between items-center pt-2 text-[10px] font-mono font-bold text-neutral-400">
 										<span className="text-sm font-medium text-neutral-500 uppercase tracking-widest">
 											{activeTemplate
@@ -843,23 +849,29 @@ export default function DraftEditor({
 											className="bg-white/80 backdrop-blur shadow-sm border border-neutral-100"
 										/>
 									</div>
-									<SWRBoundary
-										data={draftId ? activeDraft : activeTemplate || content}
-										isLoading={!!draftId && isDraftLoading && !activeDraft}
+									<Suspense
 										fallback={
 											<StudioEditorSkeleton hasDraftId={!!targetDraftId} />
 										}
 									>
-										{() => (
-											<StudioEditor
-												value={content}
-												onChange={(val) => setContent(val)}
-												placeholder="Write down your thoughts..."
-												isDirty={isDirty}
-												onGenerateHint={handleGenerateHint}
-											/>
-										)}
-									</SWRBoundary>
+										<SWRBoundary
+											data={draftId ? activeDraft : activeTemplate || content}
+											isLoading={!!draftId && isDraftLoading && !activeDraft}
+											fallback={
+												<StudioEditorSkeleton hasDraftId={!!targetDraftId} />
+											}
+										>
+											{() => (
+												<StudioEditor
+													value={content}
+													onChange={(val) => setContent(val)}
+													placeholder="Write down your thoughts..."
+													isDirty={isDirty}
+													onGenerateHint={handleGenerateHint}
+												/>
+											)}
+										</SWRBoundary>
+									</Suspense>
 									<div className="flex justify-between items-center pt-2 text-[10px] font-mono font-bold text-neutral-400">
 										<span className="text-sm font-medium text-neutral-500 uppercase tracking-widest">
 											{activeTemplate

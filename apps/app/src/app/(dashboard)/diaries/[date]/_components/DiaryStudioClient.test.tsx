@@ -245,3 +245,20 @@ describe("DiaryStudioClient - キャッシュ型不整合修復検証", () => {
 		expect(updatedList?.[0]?.content).toBe("Updated Content Second Save");
 	});
 });
+
+describe("DiaryStudioClient - Local Suspense Shell Protection", () => {
+	it("ローディング状態でもヘッダーとシェルUIが崩れずに描画されること", () => {
+		const queryClient = new QueryClient({
+			defaultOptions: { queries: { retry: false } },
+		});
+
+		render(
+			<QueryClientProvider client={queryClient}>
+				<DiaryStudioClient date="2026-06-28" initialDiary={null} />
+			</QueryClientProvider>,
+		);
+
+		expect(screen.getAllByText("Diary Studio")[0]).toBeInTheDocument();
+		expect(screen.getAllByText("2026-06-28")[0]).toBeInTheDocument();
+	});
+});

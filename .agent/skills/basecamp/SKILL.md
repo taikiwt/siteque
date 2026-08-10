@@ -59,3 +59,6 @@ Next.js App Router 環境では、クライアントサイドルーティング�
 
 ## Service Worker (SW) サードパーティ通信エラーハンドリング
 Service Worker (`public/sw.js`) 内の `fetch` イベント処理において、外部アナリティクスやサードパーティドメインへの通信失敗（`net::ERR_BLOCKED_BY_CLIENT` 等）時に `TypeError: Failed to convert value to 'Response'` でレスポンス生成を破綻させないよう、例外を `try-catch` で安全に捕獲してフォールバック通過（または無効化）させる処理を必須とする。
+
+## `sw.js` におけるドキュメントナビゲーションおよび RSC 通信の Bypass 規約
+`public/sw.js` において、`mode === "navigate"` または `text/html` 要求（画面全体の取得）、および `_rsc` パラメータを持つ Next.js 画面更新リクエストを SW ハンドラ冒頭で無条件に即座 `return;` させること。ドキュメント通信を SW のキャッシュ処理から完全に切り離し、100% サーバー（`middleware.ts`）へ直通させて認証リダイレクトを保証すること。

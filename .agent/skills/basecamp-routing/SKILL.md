@@ -65,3 +65,20 @@ Studio 画面（Draft / Diary）への画面遷移時、Server Component 側で�
 - **UIシェルの即時返却**: RSC 側は最速で認証ガード (`requireUser`) のみを通過させ、ヘッダーやレイアウト枠組み（UIシェル）を 0ms で即時レンダリング返却すること。
 - **データ依存部の保護**: エディタ本文やレビュー領域などの動的コンテンツ領域のみを `<SWRBoundary>` で保護する。キャッシュが存在する場合はスケルトンをバイパスして 0ms 表示し、キャッシュ無しのフェッチ時は 200ms ホールドによる視覚的チラつき防止を行う。
 - **router.refresh() の完全排除**: 保存処理（Save Draft / Save Diary）における `router.refresh()` や Server Component の再検証を完全に排除し、TanStack Query の `setQueriesData`（プレフィックス一致）による手元キャッシュ一括分配でUIとサーバー状態の同期を完結させること。
+
+## 10. RSC サスペンドの最外殻漏れ出し防止則
+`(dashboard)/layout.tsx` などの共通最外殻レイアウトには、`{children}` 全体を包む大雑把な `<Suspense fallback={null}>` を配置してはならない。サスペンドの受け皿（Suspense 境界）は必ず各機能ページ（`page.tsx` または `_components` 内）の最も狭いデータ依存領域へ閉じ込めること。
+
+**RSC サスペンドの最外殻漏れ出し防止とスケルトンシェル保護の掟:** `(dashboard)/layout.tsx` 等の最外殻レイアウトや各機能ページのトップレベルで `{children}` 全体を包む大雑把な `<Suspense fallback={null}>` を配置してはならない。サスペンド時も UI シェル（ヘッダー・フレーム）は 0ms で常時アタッチさせ、サスペンド受け皿はデータに依存する内部領域のみへ閉じ込めること。
+
+## UI シェル常時固定と局所データサスペンドの規約
+ヘッダー、タブ、検索窓、ペインレイアウト等の固定枠組み（UI シェル）はサスペンド境界の外側に 0ms 常時表示で固定すること。`useSearchParams()` を使用するページコンポーネント（`page.tsx`）の最外殻 Suspense は Next.js 15 ビルド要件（`useSearchParams` の CSR Bailout 防止）を満たすセーフティネットとし、データ依存スロット（リスト本文・エディタ）内部のみに `<SWRBoundary>` および局所 `<Suspense>` をカプセル化配置すること。
+
+## Diary Studio における UI シェル固定と局所サスペンド境界の規約
+`/diaries/[date]` 画面において、ヘッダー（タイトル、日付、Saveボタン）、左右パネルのレスポンシブ枠組み、およびトピック操作エリアはサスペンド境界の外側に 0ms 常時表示で固定すること。`<Suspense>` および `<SWRBoundary>` は `StudioEditor` 本文領域および `DiaryMaterialsPane` リスト領域のみに局所配置し、最外殻サスペンドへの巻き込み全画面消去を防止すること。
+
+## Weave Studio における UI シェル固定と局所サスペンド境界の規約
+`/studio/[id]` および `/studio/new` 画面において、ヘッダー（`DraftEditorHeader`）、タイトル/slug入力領域、および左右パネルのレスポンシブ枠組みはサスペンド境界の外側に 0ms 常時表示で固定すること。`<Suspense>` および `<SWRBoundary>` は `StudioEditor` 本文領域、`StudioMaterialsPane` リスト領域、および `StudioReviewPane` リスト領域のみに局所配置し、最外殻サスペンドへの巻き込み全画面消去を防止すること。
+
+## テンプレート管理における UI シェル固定と局所サスペンド境界の規約
+`/templates` 画面において、左ペインヘッダー（Launchpad戻るボタン、「Templates」タイトル、`+`ボタン）およびペインフレームはサスペンド境界の外側に 0ms 常時表示で固定すること。`<Suspense>` および `<SWRBoundary>` はテンプレート一覧リスト領域および右ペイン/モバイルDrawer内のエディタ領域（`EditorContent`）のみに局所配置し、`if (isLoading) return null;` による全画面消去や最外殻サスペンドへの巻き込み全画面置換を防止すること。

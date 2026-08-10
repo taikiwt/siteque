@@ -1,5 +1,6 @@
-import { use } from "react";
+import { Suspense, use } from "react";
 import DraftEditor from "../../_components/DraftEditor";
+import { StudioEditorSkeleton } from "../_components/StudioSkeletons";
 
 interface DraftPageProps {
 	params: Promise<{
@@ -10,5 +11,9 @@ interface DraftPageProps {
 export default function DraftEditPage({ params }: DraftPageProps) {
 	const { id } = use(params);
 
-	return <DraftEditor draftId={id} />;
+	return (
+		<Suspense fallback={<StudioEditorSkeleton />}>
+			<DraftEditor draftId={id} />
+		</Suspense>
+	);
 }
