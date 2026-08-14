@@ -5,7 +5,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Diary } from "@sitecue/shared";
 import { getSafeUrl } from "@sitecue/shared";
 import { GripVertical, MapPin } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CustomLink as Link } from "@/components/ui/custom-link";
 import { NoteStatusBadge } from "@/components/ui/note-status-badge";
 import { cn } from "@/lib/utils";
@@ -21,19 +21,7 @@ const formatDate = (dateStr: string) => {
 	});
 };
 
-export function NoteItem({
-	item,
-	currentExact,
-	selectedNoteId,
-	selectedDraftId,
-	searchParams,
-	isSortable = false,
-	dragHandleProps = {},
-	selectable = false,
-	isSelected = false,
-	onSelectChange,
-	onTodoToggle,
-}: {
+interface NoteItemProps {
 	item: Note | Draft | Diary;
 	currentExact: string | null;
 	selectedNoteId: string | null;
@@ -45,7 +33,21 @@ export function NoteItem({
 	isSelected?: boolean;
 	onSelectChange?: (id: string, checked: boolean) => void;
 	onTodoToggle?: (e: React.MouseEvent, id: string, resolved: boolean) => void;
-}) {
+}
+
+function NoteItemComponent({
+	item,
+	currentExact,
+	selectedNoteId,
+	selectedDraftId,
+	searchParams,
+	isSortable = false,
+	dragHandleProps = {},
+	selectable = false,
+	isSelected = false,
+	onSelectChange,
+	onTodoToggle,
+}: NoteItemProps) {
 	const [isExiting, setIsExiting] = useState(false);
 	const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -63,7 +65,7 @@ export function NoteItem({
 		const dayLabel = diaryDate.toLocaleDateString("en-US", {
 			day: "numeric",
 			weekday: "short",
-		}); // e.g. "21 (Sun)"
+		});
 		const isActive =
 			searchParams.get("date") === diary.date &&
 			searchParams.get("view") === "diaries";
@@ -128,16 +130,13 @@ export function NoteItem({
 	const handleTodoToggleClick = (e: React.MouseEvent) => {
 		if (!isNote || isExiting) return;
 
-		// If toggling to resolved, show animation
 		if (!item.is_resolved) {
 			setIsExiting(true);
 			exitTimerRef.current = setTimeout(() => {
 				onTodoToggle?.(e, item.id, item.is_resolved);
-				// 【修正】要素がアンマウントされないビュー（完了済みリスト等）のために、必ず状態をリセットする
 				setIsExiting(false);
 			}, 400);
 		} else {
-			// Toggling back to unresolved happens immediately
 			onTodoToggle?.(e, item.id, item.is_resolved);
 		}
 	};
@@ -152,14 +151,12 @@ export function NoteItem({
 				isExiting && "line-through pointer-events-none",
 			)}
 		>
-			{/* 透明なリンクを絶対配置(absolute)にしてカード全体を覆う */}
 			<Link
 				href={`/notes?${params.toString()}`}
 				className="absolute inset-0 z-0"
 				aria-label="View details"
 			/>
 
-			{/* ドラッグやチェックボックスはリンクより上の層(z-10)に浮かせる */}
 			<div className="flex items-center pl-2 shrink-0 relative z-10 pointer-events-auto">
 				{isSortable && isNote && (
 					<button
@@ -187,7 +184,6 @@ export function NoteItem({
 				)}
 			</div>
 
-			{/* テキスト領域はクリックを透過させ、TODOボタンだけクリックを受け付ける */}
 			<div className="flex-1 block py-4 pr-4 pl-2 pointer-events-none relative z-10 min-w-0">
 				<div className="flex justify-between items-start mb-1">
 					{isNote ? (
@@ -235,19 +231,9 @@ export function NoteItem({
 	);
 }
 
-export function SortableNoteItem({
-	item,
-	currentView,
-	isSearchActive,
-	currentExact,
-	selectedNoteId,
-	selectedDraftId,
-	searchParams,
-	selectable,
-	isSelected,
-	onSelectChange,
-	onTodoToggle,
-}: {
+export const NoteItem = React.memo(NoteItemComponent);
+
+interface SortableNoteItemProps {
 	item: Note | Draft;
 	currentView: string | null;
 	currentExact: string | null;
@@ -259,7 +245,21 @@ export function SortableNoteItem({
 	isSelected?: boolean;
 	onSelectChange?: (id: string, checked: boolean) => void;
 	onTodoToggle?: (e: React.MouseEvent, id: string, resolved: boolean) => void;
-}) {
+}
+
+function SortableNoteItemComponent({
+	item,
+	currentView,
+	isSearchActive,
+	currentExact,
+	selectedNoteId,
+	selectedDraftId,
+	searchParams,
+	selectable,
+	isSelected,
+	onSelectChange,
+	onTodoToggle,
+}: SortableNoteItemProps) {
 	const {
 		setNodeRef,
 		transform,
@@ -296,3 +296,5 @@ export function SortableNoteItem({
 		</div>
 	);
 }
+
+export const SortableNoteItem = React.memo(SortableNoteItemComponent);

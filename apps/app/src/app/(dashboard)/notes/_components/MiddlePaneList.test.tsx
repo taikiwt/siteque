@@ -114,6 +114,69 @@ const mockGroupedNotes = {
 	domains: {},
 };
 
+describe("MiddlePaneList Component Integration", () => {
+	afterEach(() => {
+		cleanup();
+		vi.clearAllMocks();
+		searchParamsMock.mockReturnValue(new URLSearchParams());
+		vi.useRealTimers();
+	});
+
+	it("renders separated 3-tier structure correctly", () => {
+		render(
+			<MiddlePaneList
+				items={mockItems}
+				groupedNotes={mockGroupedNotes}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+			/>,
+		);
+
+		expect(screen.getByRole("button", { name: /Inbox/i })).toBeInTheDocument();
+		expect(screen.getByPlaceholderText("Search notes...")).toBeInTheDocument();
+		expect(screen.getByText("Note 1")).toBeInTheDocument();
+	});
+
+	it("maintains search input value when noteId changes (detail open protection)", () => {
+		const { rerender } = render(
+			<MiddlePaneList
+				items={mockItems}
+				groupedNotes={mockGroupedNotes}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+			/>,
+		);
+
+		const searchInput = screen.getByPlaceholderText(
+			"Search notes...",
+		) as HTMLInputElement;
+		fireEvent.change(searchInput, { target: { value: "filter test" } });
+		expect(searchInput.value).toBe("filter test");
+
+		// noteId が URL に付与されて再レンダリングされた状態を想定
+		rerender(
+			<MiddlePaneList
+				items={mockItems}
+				groupedNotes={mockGroupedNotes}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId="note-1"
+				selectedDraftId={null}
+			/>,
+		);
+
+		// 検索入力が保護されていることを検証
+		expect(searchInput.value).toBe("filter test");
+	});
+});
+
 describe("MiddlePaneList Bulk Actions", () => {
 	afterEach(() => {
 		cleanup();
@@ -289,7 +352,7 @@ describe("MiddlePaneList Layout Verification", () => {
 		const rootDiv = container.firstChild as HTMLElement;
 		expect(rootDiv.className).not.toContain("pt-14");
 
-		// Check spacer exists inside scroll container
+		// Check scroll container exists
 		const scrollContainer = container.querySelector(".flex-1.overflow-y-auto");
 		expect(scrollContainer).toBeInTheDocument();
 	});
