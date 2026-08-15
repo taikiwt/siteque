@@ -124,9 +124,31 @@ export function NotesContainer() {
 		} else if (!groupedNotes) {
 			items = [];
 		} else if (deferredExact === "all") {
-			items = groupedNotes.domains[deferredDomain || ""]?.domainNotes || [];
+			const domainData = groupedNotes.domains[deferredDomain || ""];
+			if (domainData) {
+				items = [
+					...domainData.domainNotes,
+					...Object.values(domainData.pages).flat(),
+				];
+				items.sort((a, b) => {
+					const noteA = a as Note;
+					const noteB = b as Note;
+					if (noteA.is_pinned !== noteB.is_pinned)
+						return noteA.is_pinned ? -1 : 1;
+					if (noteA.sort_order !== noteB.sort_order) {
+						return (noteA.sort_order ?? 0) - (noteB.sort_order ?? 0);
+					}
+					return (
+						new Date(noteB.created_at).getTime() -
+						new Date(noteA.created_at).getTime()
+					);
+				});
+			} else {
+				items = [];
+			}
 		} else if (deferredExact) {
-			items = groupedNotes.domains[deferredDomain || ""]?.pages[deferredExact] || [];
+			items =
+				groupedNotes.domains[deferredDomain || ""]?.pages[deferredExact] || [];
 		} else if (deferredView === "inbox" || deferredDomain === "inbox") {
 			items = groupedNotes.inbox;
 		} else if (deferredDomain) {

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+	buildNoteContextHref,
 	type NoteType,
 	normalizeUrlForGrouping,
 	SHARED_LIMITS,
@@ -16,7 +17,7 @@ import {
 	Star,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { NotesEditor } from "@/components/editor/NotesEditor";
 import MarkdownRenderer from "@/components/MarkdownRenderer";
@@ -83,6 +84,7 @@ export function RightPaneDetail({
 	const { data: diaries = [] } = useFetchDiaries();
 	const diary = diaries.find((d) => d.date === selectedDate);
 	const [isEditing, setIsEditing] = useState(false);
+	const editorContainerRef = useRef<HTMLDivElement>(null);
 
 	const [editContent, setEditContent] = useState("");
 	const [isSaving, setIsSaving] = useState(false);
@@ -136,6 +138,18 @@ export function RightPaneDetail({
 		if (isNewNote) {
 			setIsEditing(true);
 			setEditContent("");
+
+			// Note Type 連動
+			const typeParam = searchParams.get("type");
+			if (
+				typeParam === "info" ||
+				typeParam === "alert" ||
+				typeParam === "idea"
+			) {
+				setEditNoteType(typeParam as Note["note_type"]);
+			} else {
+				setEditNoteType("info");
+			}
 
 			let currentExact = searchParams.get("exact");
 			let currentDomain = searchParams.get("domain");
@@ -291,6 +305,12 @@ export function RightPaneDetail({
 	const handleEdit = () => {
 		setEditContent(note?.content || "");
 		setIsEditing(true);
+		requestAnimationFrame(() => {
+			editorContainerRef.current?.scrollIntoView({
+				behavior: "smooth",
+				block: "nearest",
+			});
+		});
 	};
 
 	const handleCancel = () => {
@@ -327,33 +347,30 @@ export function RightPaneDetail({
 
 		try {
 			if (isNewNote) {
-				const exactParam = searchParams.get("exact");
-				const domainParam = searchParams.get("domain");
-
-				let targetScope: Note["scope"] = "inbox";
-				let targetUrlPattern = "";
-
-				// 🚨 exactParam が "all" の場合は弾き、domain へフォールバックさせる
-				if (exactParam && exactParam !== "all") {
-					targetScope = "exact";
-					targetUrlPattern = exactParam;
-				} else if (domainParam && domainParam !== "inbox") {
-					targetScope = "domain";
-					targetUrlPattern = domainParam;
+				let finalUrl = editUrl.trim();
+				if (editScope === "inbox") {
+					finalUrl = "inbox";
+				} else if (finalUrl) {
+					const normalizedFullUrl = normalizeUrlForGrouping(finalUrl);
+					if (editScope === "domain") {
+						finalUrl = normalizedFullUrl.split("/")[0];
+					} else if (editScope === "exact") {
+						finalUrl = normalizedFullUrl;
+					}
+				} else {
+					finalUrl = "inbox";
 				}
 
 				const data = await createNoteMutation.mutateAsync({
 					content: newContent,
-					scope: targetScope,
-					note_type: editNoteType as NoteType, // Cast if needed but should match now
-					currentUrl: targetUrlPattern || "inbox",
+					scope: editScope,
+					note_type: editNoteType as NoteType,
+					currentUrl: finalUrl,
 				});
 
 				setOptimisticContent(newContent);
-				const params = new URLSearchParams(searchParams.toString());
-				params.delete("new");
-				params.set("noteId", data.id);
-				router.replace(`/notes?${params.toString()}`);
+				const targetHref = buildNoteContextHref(data);
+				router.replace(targetHref);
 			} else if (note) {
 				let finalUrl = editUrl.trim();
 				if (editScope === "inbox") {
@@ -784,7 +801,7 @@ export function RightPaneDetail({
 							</div>
 
 							{/* Content Editing Area */}
-							<div className="relative">
+							<div ref={editorContainerRef} className="relative">
 								{(() => {
 									const baseContent =
 										optimisticContent !== null

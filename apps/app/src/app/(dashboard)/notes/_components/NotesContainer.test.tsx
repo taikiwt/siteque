@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
 import { useSearchParams } from "next/navigation";
 import { describe, expect, it, vi } from "vitest";
 import { useFetchNotes } from "@/hooks/useNotesQuery";
@@ -236,7 +236,9 @@ describe("NotesContainer - Skeleton & Cache Strategy", () => {
 
 	it("入力パラメータのDeferred化によりヘッダーUIが0msで正常レンダリングされること", async () => {
 		vi.mocked(useSearchParams).mockReturnValue(
-			new URLSearchParams("view=domains") as unknown as ReturnType<typeof useSearchParams>,
+			new URLSearchParams("view=domains") as unknown as ReturnType<
+				typeof useSearchParams
+			>,
 		);
 
 		vi.mocked(useFetchNotes).mockReturnValue({
@@ -259,6 +261,60 @@ describe("NotesContainer - Skeleton & Cache Strategy", () => {
 				screen.getByTestId("middle-pane") ||
 					screen.getByRole("navigation", { name: "ビュー切り替え" }),
 			).toBeInTheDocument();
+		});
+	});
+});
+
+describe("NotesContainer - exact=all All Notes Integration", () => {
+	it("combines domain notes and all page notes sorted correctly when exact=all", async () => {
+		vi.mocked(useSearchParams).mockReturnValue(
+			new URLSearchParams(
+				"?view=domains&domain=example.com&exact=all",
+			) as unknown as ReturnType<typeof useSearchParams>,
+		);
+
+		const notesData = [
+			{
+				id: "domain-note-1",
+				content: "Domain Note 1",
+				url_pattern: "example.com",
+				scope: "domain",
+				is_pinned: false,
+				sort_order: 2.0,
+				created_at: "2026-08-01T00:00:00.000Z",
+			},
+			{
+				id: "page-note-pinned",
+				content: "Pinned Page Note",
+				url_pattern: "example.com/page-1",
+				scope: "exact",
+				is_pinned: true,
+				sort_order: 5.0,
+				created_at: "2026-08-01T00:00:00.000Z",
+			},
+			{
+				id: "page-note-2",
+				content: "Page Note 2",
+				url_pattern: "example.com/page-2",
+				scope: "exact",
+				is_pinned: false,
+				sort_order: 1.0,
+				created_at: "2026-08-02T00:00:00.000Z",
+			},
+		];
+
+		vi.mocked(useFetchNotes).mockReturnValue({
+			data: notesData,
+			isLoading: false,
+		} as unknown as ReturnType<typeof useFetchNotes>);
+
+		render(<NotesContainer />);
+
+		await waitFor(() => {
+			const middlePane = screen.getByTestId("middle-pane");
+			expect(middlePane).toBeInTheDocument();
+			// 3件すべてが統合されて表示対象になること
+			expect(middlePane).toHaveTextContent("3 items");
 		});
 	});
 });
