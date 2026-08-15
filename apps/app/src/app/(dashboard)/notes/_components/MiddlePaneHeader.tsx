@@ -190,9 +190,10 @@ export function MiddlePaneHeader({
 		(currentView === "diaries" && (currentYear || currentMonth));
 
 	const isDiariesView = currentView === "diaries";
+	const typeParam = filterType !== "all" ? `&type=${filterType}` : "";
 	const plusHref = isDiariesView
 		? "/notes?view=diaries&globalNew=note&intent=diary"
-		: `/notes?domain=${currentDomain || "inbox"}${currentExact ? `&exact=${encodeURIComponent(currentExact)}` : ""}&new=note`;
+		: `/notes?domain=${currentDomain || "inbox"}${currentExact ? `&exact=${encodeURIComponent(currentExact)}` : ""}&new=note${typeParam}`;
 	const plusTitle = isDiariesView ? "New Diary Log" : "New Note here";
 
 	return (

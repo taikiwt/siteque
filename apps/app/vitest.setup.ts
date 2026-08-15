@@ -95,6 +95,7 @@ vi.mock("@uiw/react-codemirror", () => {
 			return React.createElement("textarea", {
 				"data-testid": "codemirror-mock",
 				value: props.value,
+				placeholder: props.placeholder,
 				onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) =>
 					props.onChange?.(e.target.value),
 			});
