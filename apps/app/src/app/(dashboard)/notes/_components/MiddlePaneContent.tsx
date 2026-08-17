@@ -13,9 +13,9 @@ import {
 	verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { type Diary, getSafeUrl } from "@sitecue/shared";
-import { ChevronRight, FileText, Globe, Inbox } from "lucide-react";
+import { ChevronRight, FileText, Globe, Inbox, Layers } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import type { RefObject } from "react";
+import { type RefObject, useEffect, useRef } from "react";
 import { CustomLink as Link } from "@/components/ui/custom-link";
 import { DomainFavicon } from "../../_components/DomainFavicon";
 import type { Draft, GroupedNotes, Note } from "../types";
@@ -54,11 +54,14 @@ interface MiddlePaneContentProps {
 	selectedIds: Set<string>;
 	onSelectChange: (id: string, checked: boolean) => void;
 	onTodoToggle: (e: React.MouseEvent, id: string, resolved: boolean) => void;
+	onPinToggle?: (e: React.MouseEvent, id: string, pinned: boolean) => void;
 	onDragEnd: (event: DragEndEvent) => void;
 	onDrilldown: (e: React.MouseEvent, href: string) => void;
 	onUpdateParams: (key: string, value: string) => void;
 	scrollRef: RefObject<HTMLDivElement | null>;
 	isLoading?: boolean;
+	visibleCount: number;
+	onLoadMore: () => void;
 }
 
 export function MiddlePaneContent({
@@ -78,16 +81,38 @@ export function MiddlePaneContent({
 	selectedIds,
 	onSelectChange,
 	onTodoToggle,
+	onPinToggle,
 	onDragEnd,
 	onDrilldown,
 	onUpdateParams,
 	scrollRef,
 	isLoading = false,
+	visibleCount,
+	onLoadMore,
 }: MiddlePaneContentProps) {
 	const searchParams = useSearchParams();
 	const diaries = items.filter(
 		(item): item is Diary => "date" in item && !("note_type" in item),
 	);
+
+	const sentinelRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		const sentinel = sentinelRef.current;
+		if (!sentinel) return;
+
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries[0]?.isIntersecting) {
+					onLoadMore();
+				}
+			},
+			{ root: scrollRef.current, rootMargin: "200px" },
+		);
+
+		observer.observe(sentinel);
+		return () => observer.disconnect();
+	}, [onLoadMore, scrollRef]);
 
 	const sensors = useSensors(
 		useSensor(PointerSensor, {
@@ -99,6 +124,16 @@ export function MiddlePaneContent({
 
 	const isSelected =
 		!!currentView || !!currentDomain || !!currentExact || isSearchActive;
+
+	const unresolvedDomainCount = (data: {
+		domainNotes: Note[];
+		pages: Record<string, Note[]>;
+	}) => {
+		const allNotes = [...data.domainNotes, ...Object.values(data.pages).flat()];
+		return allNotes.filter((n) => !n.is_resolved).length;
+	};
+
+	const visibleItems = searchedDisplayItems.slice(0, visibleCount);
 
 	return (
 		<div
@@ -268,9 +303,7 @@ export function MiddlePaneContent({
 										{domain}
 									</span>
 									<span className="text-xs text-gray-400 shrink-0">
-										{data.domainNotes.length +
-											Object.values(data.pages).flat().length}{" "}
-										notes
+										{unresolvedDomainCount(data)} notes
 									</span>
 								</div>
 							</div>
@@ -283,29 +316,75 @@ export function MiddlePaneContent({
 			) : currentDomain && currentDomain !== "inbox" && !currentExact ? (
 				<>
 					{!query && (
-						<Link
-							href={`/notes?domain=${currentDomain}&exact=all`}
-							onClick={(e) =>
-								onDrilldown(e, `/notes?domain=${currentDomain}&exact=all`)
-							}
-							className="flex items-center justify-between p-4 hover-safe:bg-base-surface transition-colors group"
-						>
-							<div className="flex items-center gap-3">
-								<div className="p-2 bg-base-surface rounded-lg group-hover-safe:bg-base-bg border border-base-border transition-colors">
-									<Globe
-										aria-hidden="true"
-										className="w-5 h-5 text-note-info"
-									/>
+						<>
+							<Link
+								href={`/notes?domain=${currentDomain}&exact=all`}
+								onClick={(e) =>
+									onDrilldown(e, `/notes?domain=${currentDomain}&exact=all`)
+								}
+								className="flex items-center justify-between p-4 hover-safe:bg-base-surface transition-colors group"
+							>
+								<div className="flex items-center gap-3">
+									<div className="p-2 bg-base-surface rounded-lg group-hover-safe:bg-base-bg border border-base-border transition-colors">
+										<Layers
+											aria-hidden="true"
+											className="w-5 h-5 text-gray-500 group-hover-safe:text-action"
+										/>
+									</div>
+									<div className="flex flex-col min-w-0">
+										<span className="text-sm font-medium text-action">
+											All Notes
+										</span>
+										<span className="text-xs text-gray-400">
+											{unresolvedDomainCount(
+												groupedNotes.domains[currentDomain] || {
+													domainNotes: [],
+													pages: {},
+												},
+											)}{" "}
+											notes
+										</span>
+									</div>
 								</div>
-								<span className="text-sm font-medium text-action">
-									Domain Notes
-								</span>
-							</div>
-							<ChevronRight
-								aria-hidden="true"
-								className="w-4 h-4 text-gray-300"
-							/>
-						</Link>
+								<ChevronRight
+									aria-hidden="true"
+									className="w-4 h-4 text-gray-300"
+								/>
+							</Link>
+							<Link
+								href={`/notes?domain=${currentDomain}&exact=domain`}
+								onClick={(e) =>
+									onDrilldown(e, `/notes?domain=${currentDomain}&exact=domain`)
+								}
+								className="flex items-center justify-between p-4 hover-safe:bg-base-surface transition-colors group"
+							>
+								<div className="flex items-center gap-3">
+									<div className="p-2 bg-base-surface rounded-lg group-hover-safe:bg-base-bg border border-base-border transition-colors">
+										<Globe
+											aria-hidden="true"
+											className="w-5 h-5 text-note-info"
+										/>
+									</div>
+									<div className="flex flex-col min-w-0">
+										<span className="text-sm font-medium text-action">
+											Domain Notes
+										</span>
+										<span className="text-xs text-gray-400">
+											{
+												(
+													groupedNotes.domains[currentDomain]?.domainNotes || []
+												).filter((n) => !n.is_resolved).length
+											}{" "}
+											notes
+										</span>
+									</div>
+								</div>
+								<ChevronRight
+									aria-hidden="true"
+									className="w-4 h-4 text-gray-300"
+								/>
+							</Link>
+						</>
 					)}
 					{Object.entries(groupedNotes.domains[currentDomain]?.pages || {})
 						.filter(([url]) => {
@@ -347,7 +426,7 @@ export function MiddlePaneContent({
 												{path}
 											</span>
 											<span className="text-xs text-gray-400">
-												{notes.length} notes
+												{notes.filter((n) => !n.is_resolved).length} notes
 											</span>
 										</div>
 									</div>
@@ -376,10 +455,10 @@ export function MiddlePaneContent({
 								to see the list of items
 							</p>
 						</div>
-					) : searchedDisplayItems.length > 0 ? (
+					) : visibleItems.length > 0 ? (
 						<div className="divide-y divide-base-border">
 							{currentView === "drafts" ? (
-								searchedDisplayItems.map((item) => (
+								visibleItems.map((item) => (
 									<NoteItem
 										key={item.id}
 										item={item}
@@ -389,6 +468,7 @@ export function MiddlePaneContent({
 										searchParams={searchParams}
 										selectable={false}
 										onTodoToggle={onTodoToggle}
+										onPinToggle={onPinToggle}
 									/>
 								))
 							) : (
@@ -399,10 +479,10 @@ export function MiddlePaneContent({
 									onDragEnd={onDragEnd}
 								>
 									<SortableContext
-										items={searchedDisplayItems.map((item) => item.id)}
+										items={visibleItems.map((item) => item.id)}
 										strategy={verticalListSortingStrategy}
 									>
-										{searchedDisplayItems.map((item) => (
+										{visibleItems.map((item) => (
 											<SortableNoteItem
 												key={item.id}
 												item={item}
@@ -416,10 +496,17 @@ export function MiddlePaneContent({
 												isSelected={selectedIds.has(item.id)}
 												onSelectChange={onSelectChange}
 												onTodoToggle={onTodoToggle}
+												onPinToggle={onPinToggle}
 											/>
 										))}
 									</SortableContext>
 								</DndContext>
+							)}
+							{visibleItems.length < searchedDisplayItems.length && (
+								<div
+									ref={sentinelRef}
+									className="h-4 w-full pointer-events-none"
+								/>
 							)}
 						</div>
 					) : (

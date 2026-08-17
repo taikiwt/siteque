@@ -4,8 +4,9 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { Diary } from "@sitecue/shared";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { useDeleteNotes, useUpdateNote } from "@/hooks/useNotesQuery";
 import type { Draft, GroupedNotes, Note } from "../types";
 import { MiddlePaneContent } from "./MiddlePaneContent";
@@ -73,18 +74,40 @@ export function MiddlePaneList(props: Props) {
 	const [filterType, setFilterType] = useState<FilterType>("all");
 	const [isSorting, setIsSorting] = useState(false);
 
+	const isDesktop = useMediaQuery("(min-width: 768px)");
+	const defaultBatchSize = isDesktop ? 35 : 20;
+	const [visibleCount, setVisibleCount] = useState(defaultBatchSize);
+
 	const scrollRef = useRef<HTMLDivElement>(null);
 
 	const { mutateAsync: updateNote } = useUpdateNote();
 	const { mutateAsync: deleteNotesAsync } = useDeleteNotes();
 
-	// コンテキスト変更時にローカル選択状態をクリア
-	// biome-ignore lint/correctness/useExhaustiveDependencies: Reset selection on view switch
-	useEffect(() => {
-		setIsSelectMode(false);
-		setSelectedIds(new Set());
-		setFilterType("all");
+	const handleLoadMore = useCallback(() => {
+		setVisibleCount((prev) => prev + defaultBatchSize);
+	}, [defaultBatchSize]);
+
+	// 階層コンテキストを正規化して検知（inbox / drafts / diaries / domain:exact）
+	const resolvedContext = useMemo(() => {
+		if (currentView === "inbox" || currentDomain === "inbox") {
+			return "inbox";
+		}
+		if (currentView === "drafts") return "drafts";
+		if (currentView === "diaries") return "diaries";
+		if (currentDomain) return `${currentDomain}:${currentExact || "root"}`;
+		return "domains-root";
 	}, [currentView, currentDomain, currentExact]);
+
+	const prevContextRef = useRef(resolvedContext);
+	useEffect(() => {
+		if (prevContextRef.current !== resolvedContext) {
+			setIsSelectMode(false);
+			setSelectedIds(new Set());
+			setFilterType("all");
+			setVisibleCount(defaultBatchSize);
+			prevContextRef.current = resolvedContext;
+		}
+	}, [resolvedContext, defaultBatchSize]);
 
 	const handleTabSwitch = useCallback(() => {
 		if (scrollRef.current) {
@@ -148,6 +171,30 @@ export function MiddlePaneList(props: Props) {
 		[updateNote],
 	);
 
+	// 🚨 Pin留め操作時のスクロール位置維持
+	const handlePinToggle = useCallback(
+		(e: React.MouseEvent, noteId: string, currentPinned: boolean) => {
+			e.preventDefault();
+			e.stopPropagation();
+
+			const currentScrollTop = scrollRef.current?.scrollTop;
+
+			void updateNote({
+				id: noteId,
+				updates: { is_pinned: !currentPinned },
+			}).then(() => {
+				if (scrollRef.current && currentScrollTop !== undefined) {
+					requestAnimationFrame(() => {
+						if (scrollRef.current) {
+							scrollRef.current.scrollTop = currentScrollTop;
+						}
+					});
+				}
+			});
+		},
+		[updateNote],
+	);
+
 	const toggleSelect = useCallback((id: string, checked: boolean) => {
 		setSelectedIds((prev) => {
 			const next = new Set(prev);
@@ -189,7 +236,21 @@ export function MiddlePaneList(props: Props) {
 	const handleDragEnd = useCallback(
 		async (event: DragEndEvent) => {
 			const { active, over } = event;
-			if (!over || isSorting) return;
+			if (!over || isSorting || currentExact === "all") return;
+
+			const activeItem = localItems.find(
+				(item) => "id" in item && item.id === active.id,
+			) as Note | undefined;
+			const overItem = localItems.find(
+				(item) => "id" in item && item.id === over.id,
+			) as Note | undefined;
+
+			if (!activeItem || !overItem) return;
+
+			// 🚨 Pin留めノートと通常ノートの境界を跨ぐ移動を禁止（Pinソート順序の破綻防止）
+			if (Boolean(activeItem.is_pinned) !== Boolean(overItem.is_pinned)) {
+				return;
+			}
 
 			const oldIndex = localItems.findIndex(
 				(item) => "id" in item && item.id === active.id,
@@ -244,7 +305,7 @@ export function MiddlePaneList(props: Props) {
 			setIsSorting(true);
 			try {
 				await updateNote({
-					id: active.id as string,
+					id: String(active.id),
 					updates: { sort_order: newOrder },
 				});
 				router.refresh();
@@ -255,7 +316,7 @@ export function MiddlePaneList(props: Props) {
 				setIsSorting(false);
 			}
 		},
-		[localItems, isSorting, updateNote, router, items],
+		[localItems, isSorting, currentExact, updateNote, router, items],
 	);
 
 	const displayItems = localItems.filter((item): item is Note | Draft => {
@@ -311,7 +372,7 @@ export function MiddlePaneList(props: Props) {
 					onCancelSelection={handleCancelSelection}
 					onDeleteSelected={handleDeleteSelected}
 					isDeletingBulk={isDeletingBulk}
-					displayItems={displayItems}
+					displayItems={searchedDisplayItems}
 					onBack={handleBack}
 				/>
 			</div>
@@ -334,11 +395,14 @@ export function MiddlePaneList(props: Props) {
 				selectedIds={selectedIds}
 				onSelectChange={toggleSelect}
 				onTodoToggle={handleTodoToggle}
+				onPinToggle={handlePinToggle}
 				onDragEnd={handleDragEnd}
 				onDrilldown={handleDrilldown}
 				onUpdateParams={updateParams}
 				scrollRef={scrollRef}
 				isLoading={isLoading}
+				visibleCount={visibleCount}
+				onLoadMore={handleLoadMore}
 			/>
 		</div>
 	);

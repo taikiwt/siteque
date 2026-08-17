@@ -317,4 +317,55 @@ describe("NotesContainer - exact=all All Notes Integration", () => {
 			expect(middlePane).toHaveTextContent("3 items");
 		});
 	});
+
+	it("separates exact=all (created_at DESC) and exact=domain (is_pinned & sort_order)", async () => {
+		vi.mocked(useSearchParams).mockReturnValue(
+			new URLSearchParams(
+				"?view=domains&domain=example.com&exact=domain",
+			) as unknown as ReturnType<typeof useSearchParams>,
+		);
+
+		const notesData = [
+			{
+				id: "domain-note-1",
+				content: "Domain Note 1",
+				url_pattern: "example.com",
+				scope: "domain",
+				is_pinned: false,
+				sort_order: 2.0,
+				created_at: "2026-08-01T00:00:00.000Z",
+			},
+			{
+				id: "domain-note-2",
+				content: "Domain Note 2",
+				url_pattern: "example.com",
+				scope: "domain",
+				is_pinned: true,
+				sort_order: 5.0,
+				created_at: "2026-07-01T00:00:00.000Z",
+			},
+			{
+				id: "page-note-1",
+				content: "Page Note 1",
+				url_pattern: "example.com/page-1",
+				scope: "exact",
+				is_pinned: false,
+				sort_order: 1.0,
+				created_at: "2026-08-02T00:00:00.000Z",
+			},
+		];
+
+		vi.mocked(useFetchNotes).mockReturnValue({
+			data: notesData,
+			isLoading: false,
+		} as unknown as ReturnType<typeof useFetchNotes>);
+
+		render(<NotesContainer />);
+
+		await waitFor(() => {
+			const middlePane = screen.getByTestId("middle-pane");
+			// exact=domain の場合はドメイン直下の2件のみ抽出される
+			expect(middlePane).toHaveTextContent("2 items");
+		});
+	});
 });

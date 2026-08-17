@@ -87,4 +87,90 @@ describe("NoteItem", () => {
 		expect(mockResolve).toHaveBeenCalledWith(expect.anything(), "123", true);
 		expect(mockResolve).toHaveBeenCalledTimes(1);
 	});
+
+	it("renders Pin button and triggers onPinToggle with event propagation stopped", () => {
+		const mockPinToggle = vi.fn();
+		const mockNote = {
+			id: "note-123",
+			content: "Test Note Content",
+			is_pinned: false,
+			is_resolved: false,
+			note_type: "info",
+			created_at: new Date().toISOString(),
+			scope: "domain",
+		} as Note;
+
+		render(
+			<NoteItem
+				item={mockNote}
+				onPinToggle={mockPinToggle}
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+				searchParams={new URLSearchParams()}
+			/>,
+		);
+
+		const pinButton = screen.getByRole("button", { name: /pin note/i });
+		expect(pinButton).toBeInTheDocument();
+
+		fireEvent.click(pinButton);
+
+		expect(mockPinToggle).toHaveBeenCalledWith(
+			expect.anything(),
+			"note-123",
+			false,
+		);
+		expect(mockPinToggle).toHaveBeenCalledTimes(1);
+	});
+
+	it("renders active style when note is pinned", () => {
+		const mockNote = {
+			id: "note-pinned",
+			content: "Pinned Note",
+			is_pinned: true,
+			is_resolved: false,
+			note_type: "info",
+			created_at: new Date().toISOString(),
+			scope: "domain",
+		} as Note;
+
+		render(
+			<NoteItem
+				item={mockNote}
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+				searchParams={new URLSearchParams()}
+			/>,
+		);
+
+		const pinButton = screen.getByRole("button", { name: /unpin note/i });
+		expect(pinButton.className).toContain("text-action");
+	});
+
+	it("hides drag handle when isSortable is false (e.g. All Notes)", () => {
+		const mockNote = {
+			id: "note-123",
+			content: "Test Note Content",
+			is_pinned: false,
+			is_resolved: false,
+			note_type: "info",
+			created_at: new Date().toISOString(),
+			scope: "domain",
+		} as Note;
+
+		render(
+			<NoteItem
+				item={mockNote}
+				isSortable={false}
+				currentExact="all"
+				selectedNoteId={null}
+				selectedDraftId={null}
+				searchParams={new URLSearchParams()}
+			/>,
+		);
+
+		expect(screen.queryByLabelText("Drag to reorder")).not.toBeInTheDocument();
+	});
 });

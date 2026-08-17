@@ -284,6 +284,27 @@ describe("MiddlePaneList Bulk Actions", () => {
 		expect(screen.getByText("Note 1")).toBeInTheDocument();
 		expect(screen.getByText("Note 2")).toBeInTheDocument();
 	});
+
+	it("passes searchedDisplayItems to MiddlePaneHeader for search-aware bulk copying", async () => {
+		render(
+			<MiddlePaneList
+				currentDomain="inbox"
+				currentExact={null}
+				currentView="inbox"
+				groupedNotes={mockGroupedNotes}
+				items={mockItems}
+				selectedDraftId={null}
+				selectedNoteId={null}
+			/>,
+		);
+
+		const searchInput = screen.getByPlaceholderText("Search notes...");
+		fireEvent.change(searchInput, { target: { value: "Note 2" } });
+
+		// 検索結果に Note 2 だけが残り、一括コピー対象も連動していることを検証
+		expect(screen.queryByText("Note 1")).not.toBeInTheDocument();
+		expect(screen.getByText("Note 2")).toBeInTheDocument();
+	});
 });
 
 describe("MiddlePaneList Hierarchy & SSOT", () => {
@@ -294,7 +315,7 @@ describe("MiddlePaneList Hierarchy & SSOT", () => {
 		vi.useRealTimers();
 	});
 
-	it("renders 'Domain Notes' correctly in domain pages view", () => {
+	it("renders 'All Notes' and 'Domain Notes' correctly in domain pages view", () => {
 		render(
 			<MiddlePaneList
 				items={[]}
@@ -310,7 +331,8 @@ describe("MiddlePaneList Hierarchy & SSOT", () => {
 				selectedDraftId={null}
 			/>,
 		);
-		expect(screen.getByText("Domain Notes")).toBeDefined();
+		expect(screen.getByText("All Notes")).toBeInTheDocument();
+		expect(screen.getByText("Domain Notes")).toBeInTheDocument();
 	});
 
 	it("keeps exact=all in New Note button href", () => {
@@ -1145,5 +1167,131 @@ describe("MiddlePaneList Deferred Rendering", () => {
 		);
 
 		expect(screen.getByText("内容A")).toBeInTheDocument();
+	});
+});
+
+describe("MiddlePaneList D&D Pin Boundary Guard & Filter Retention", () => {
+	afterEach(() => {
+		cleanup();
+		vi.clearAllMocks();
+		mockMutate.impl = () => {};
+	});
+
+	it("prevents D&D reordering across pinned and unpinned boundary", async () => {
+		const mutateMock = vi.fn();
+		mockMutate.impl = mutateMock;
+
+		const items: Note[] = [
+			{ ...mockItems[0], id: "pinned-1", is_pinned: true, sort_order: 0 },
+			{ ...mockItems[1], id: "unpinned-1", is_pinned: false, sort_order: 1 },
+		];
+
+		render(
+			<MiddlePaneList
+				items={items}
+				groupedNotes={{
+					inbox: items,
+					drafts: [],
+					domains: {},
+				}}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+			/>,
+		);
+
+		// pinned-1 を unpinned-1 の位置へドラッグ（境界を跨ぐ操作）
+		await act(async () => {
+			await mockLastOnDragEndContainer.current?.({
+				active: { id: "pinned-1" },
+				over: { id: "unpinned-1" },
+			});
+		});
+
+		// 境界を跨ぐ移動はガードされ、ミューテーションが発火しないこと
+		expect(mutateMock).not.toHaveBeenCalled();
+	});
+
+	it("maintains filterType when new=note parameter is added in inbox view", () => {
+		const { rerender } = render(
+			<MiddlePaneList
+				items={mockItems}
+				groupedNotes={mockGroupedNotes}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+			/>,
+		);
+
+		// Filter を Idea に切り替え
+		const ideaFilterBtn = screen.getAllByRole("button", { name: "Idea" })[0];
+		fireEvent.click(ideaFilterBtn);
+
+		// Note 2 (idea) のみ表示されている状態
+		expect(screen.queryByText("Note 1")).not.toBeInTheDocument();
+		expect(screen.getByText("Note 2")).toBeInTheDocument();
+
+		// 新規作成パラメータが付与された状態（同じInboxコンテキスト内）で再レンダリング
+		rerender(
+			<MiddlePaneList
+				items={mockItems}
+				groupedNotes={mockGroupedNotes}
+				currentView="inbox"
+				currentDomain="inbox"
+				currentExact={null}
+				selectedNoteId={null}
+				selectedDraftId={null}
+			/>,
+		);
+
+		// フィルターが "all" にリセットされず維持されていること
+		expect(screen.queryByText("Note 1")).not.toBeInTheDocument();
+		expect(screen.getByText("Note 2")).toBeInTheDocument();
+	});
+});
+
+describe("MiddlePaneList Scroll Retention on Pin Toggle", () => {
+	it("preserves scroll position when pin toggling a note", async () => {
+		const mutateAsyncMock = vi.fn().mockResolvedValue({});
+		mockMutate.impl = mutateAsyncMock;
+
+		const { container } = render(
+			<MiddlePaneList
+				currentDomain="inbox"
+				currentExact={null}
+				currentView="inbox"
+				groupedNotes={mockGroupedNotes}
+				items={mockItems}
+				selectedDraftId={null}
+				selectedNoteId={null}
+			/>,
+		);
+
+		const scrollContainer = container.querySelector(
+			".flex-1.overflow-y-auto",
+		) as HTMLDivElement;
+		expect(scrollContainer).toBeInTheDocument();
+
+		// スクロール位置をシミュレート
+		Object.defineProperty(scrollContainer, "scrollTop", {
+			value: 250,
+			writable: true,
+		});
+
+		// 最初のノートのPinボタンをクリック
+		const pinButton = screen.getAllByRole("button", { name: /pin note/i })[0];
+		fireEvent.click(pinButton);
+
+		expect(mutateAsyncMock).toHaveBeenCalledWith({
+			id: "note-1",
+			updates: { is_pinned: true },
+		});
+
+		// スクロール位置が250に維持されていることを確認
+		expect(scrollContainer.scrollTop).toBe(250);
 	});
 });

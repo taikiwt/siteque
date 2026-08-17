@@ -190,10 +190,27 @@ export function MiddlePaneHeader({
 		(currentView === "diaries" && (currentYear || currentMonth));
 
 	const isDiariesView = currentView === "diaries";
-	const typeParam = filterType !== "all" ? `&type=${filterType}` : "";
-	const plusHref = isDiariesView
-		? "/notes?view=diaries&globalNew=note&intent=diary"
-		: `/notes?domain=${currentDomain || "inbox"}${currentExact ? `&exact=${encodeURIComponent(currentExact)}` : ""}&new=note${typeParam}`;
+	const getPlusHref = () => {
+		if (isDiariesView) {
+			return "/notes?view=diaries&globalNew=note&intent=diary";
+		}
+		const params = new URLSearchParams();
+		if (
+			currentView === "inbox" ||
+			currentDomain === "inbox" ||
+			(!currentView && !currentDomain)
+		) {
+			params.set("view", "inbox");
+		} else if (currentDomain) {
+			params.set("domain", currentDomain);
+			if (currentExact) params.set("exact", currentExact);
+		}
+		params.set("new", "note");
+		if (filterType !== "all") params.set("type", filterType);
+		return `/notes?${params.toString()}`;
+	};
+
+	const plusHref = getPlusHref();
 	const plusTitle = isDiariesView ? "New Diary Log" : "New Note here";
 
 	return (

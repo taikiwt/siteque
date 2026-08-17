@@ -4,7 +4,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Diary } from "@sitecue/shared";
 import { getSafeUrl } from "@sitecue/shared";
-import { GripVertical, MapPin } from "lucide-react";
+import { GripVertical, MapPin, Pin } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { CustomLink as Link } from "@/components/ui/custom-link";
 import { NoteStatusBadge } from "@/components/ui/note-status-badge";
@@ -33,6 +33,7 @@ interface NoteItemProps {
 	isSelected?: boolean;
 	onSelectChange?: (id: string, checked: boolean) => void;
 	onTodoToggle?: (e: React.MouseEvent, id: string, resolved: boolean) => void;
+	onPinToggle?: (e: React.MouseEvent, id: string, pinned: boolean) => void;
 }
 
 function NoteItemComponent({
@@ -47,6 +48,7 @@ function NoteItemComponent({
 	isSelected = false,
 	onSelectChange,
 	onTodoToggle,
+	onPinToggle,
 }: NoteItemProps) {
 	const [isExiting, setIsExiting] = useState(false);
 	const exitTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -114,6 +116,7 @@ function NoteItemComponent({
 
 	const isNote = "note_type" in item;
 	const isResolved = isNote && item.is_resolved;
+	const isPinned = isNote && !!item.is_pinned;
 	const isActive = isNote
 		? selectedNoteId === item.id
 		: selectedDraftId === item.id;
@@ -200,9 +203,34 @@ function NoteItemComponent({
 							{!item.title && !item.content ? "NEW" : "DRAFT"}
 						</span>
 					)}
-					<span className="text-[10px] text-gray-400 shrink-0">
-						{formatDate(isNote ? item.created_at : item.updated_at)}
-					</span>
+					<div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
+						<span className="text-[10px] text-gray-400">
+							{formatDate(isNote ? item.created_at : item.updated_at)}
+						</span>
+						{isNote && (
+							<button
+								type="button"
+								onClick={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									onPinToggle?.(e, item.id, item.is_pinned ?? false);
+								}}
+								className={cn(
+									"p-1 rounded-full hover:bg-base-surface transition-colors cursor-pointer",
+									isPinned
+										? "text-action fill-current"
+										: "text-neutral-300 hover:text-action",
+								)}
+								title={isPinned ? "Unpin note" : "Pin note"}
+								aria-label={isPinned ? "Unpin note" : "Pin note"}
+							>
+								<Pin
+									aria-hidden="true"
+									className={cn("w-3.5 h-3.5", isPinned && "fill-current")}
+								/>
+							</button>
+						)}
+					</div>
 				</div>
 				<h3
 					className={cn(
@@ -214,7 +242,7 @@ function NoteItemComponent({
 				</h3>
 				<p
 					className={cn(
-						"text-sm text-action line-clamp-3 min-h-[3.75rem] break-words",
+						"text-sm text-action line-clamp-2 min-h-[2.5rem] md:line-clamp-3 md:min-h-[3.75rem] break-words",
 						(isResolved || isExiting) && "line-through",
 					)}
 				>
@@ -245,6 +273,7 @@ interface SortableNoteItemProps {
 	isSelected?: boolean;
 	onSelectChange?: (id: string, checked: boolean) => void;
 	onTodoToggle?: (e: React.MouseEvent, id: string, resolved: boolean) => void;
+	onPinToggle?: (e: React.MouseEvent, id: string, pinned: boolean) => void;
 }
 
 function SortableNoteItemComponent({
@@ -259,7 +288,10 @@ function SortableNoteItemComponent({
 	isSelected,
 	onSelectChange,
 	onTodoToggle,
+	onPinToggle,
 }: SortableNoteItemProps) {
+	const isSortDisabled =
+		currentView === "drafts" || currentExact === "all" || isSearchActive;
 	const {
 		setNodeRef,
 		transform,
@@ -269,6 +301,7 @@ function SortableNoteItemComponent({
 		listeners,
 	} = useSortable({
 		id: item.id,
+		disabled: isSortDisabled,
 	});
 
 	const style = {
@@ -286,12 +319,15 @@ function SortableNoteItemComponent({
 				selectedNoteId={selectedNoteId}
 				selectedDraftId={selectedDraftId}
 				searchParams={searchParams}
-				isSortable={currentView !== "drafts" && !isSearchActive}
+				isSortable={
+					currentView !== "drafts" && currentExact !== "all" && !isSearchActive
+				}
 				dragHandleProps={{ ...attributes, ...listeners }}
 				selectable={selectable}
 				isSelected={isSelected}
 				onSelectChange={onSelectChange}
 				onTodoToggle={onTodoToggle}
+				onPinToggle={onPinToggle}
 			/>
 		</div>
 	);
