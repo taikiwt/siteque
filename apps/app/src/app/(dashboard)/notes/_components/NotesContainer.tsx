@@ -130,6 +130,22 @@ export function NotesContainer() {
 					...domainData.domainNotes,
 					...Object.values(domainData.pages).flat(),
 				];
+				// All Notes は日付降順固定（D&DやPin移動による順序崩れを防止）
+				items.sort((a, b) => {
+					const noteA = a as Note;
+					const noteB = b as Note;
+					return (
+						new Date(noteB.created_at).getTime() -
+						new Date(noteA.created_at).getTime()
+					);
+				});
+			} else {
+				items = [];
+			}
+		} else if (deferredExact === "domain") {
+			const domainData = groupedNotes.domains[deferredDomain || ""];
+			if (domainData) {
+				items = [...domainData.domainNotes];
 				items.sort((a, b) => {
 					const noteA = a as Note;
 					const noteB = b as Note;
@@ -229,6 +245,7 @@ export function NotesContainer() {
 		if (!isTabReady || filteredItems.length === 0) return;
 
 		const missingIds = filteredItems
+			.slice(0, 50)
 			.filter(
 				(item): item is Note =>
 					"url_pattern" in item && item.content === undefined,
