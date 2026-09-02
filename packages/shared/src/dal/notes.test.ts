@@ -3,6 +3,7 @@ import {
 	deleteNoteEntity,
 	fetchNoteContents,
 	fetchNoteMetadatas,
+	getMatchingNoteCount,
 } from "./notes";
 
 // biome-ignore lint/suspicious/noExplicitAny: モック構築用
@@ -55,5 +56,35 @@ describe("Shared DAL: notes", () => {
 		expect(mockDelete).toHaveBeenCalled();
 		expect(mockEq).toHaveBeenCalledWith("id", "note-123");
 		expect(res).toBe("note-123");
+	});
+
+	it("getMatchingNoteCountが新設RPC get_matching_active_note_count を正しいパラメータで呼び出し件数を返すこと", async () => {
+		const mockRpc = vi.fn().mockResolvedValue({ data: 3, error: null });
+		const supabase: AnyClient = { rpc: mockRpc };
+
+		const count = await getMatchingNoteCount(
+			supabase,
+			"example.com",
+			"https://example.com/page",
+		);
+
+		expect(mockRpc).toHaveBeenCalledWith("get_matching_active_note_count", {
+			p_domain: "example.com",
+			p_exact: "https://example.com/page",
+		});
+		expect(count).toBe(3);
+	});
+
+	it("getMatchingNoteCountでRPCがnullを返した場合に0を返すこと", async () => {
+		const mockRpc = vi.fn().mockResolvedValue({ data: null, error: null });
+		const supabase: AnyClient = { rpc: mockRpc };
+
+		const count = await getMatchingNoteCount(
+			supabase,
+			"example.com",
+			"https://example.com/page",
+		);
+
+		expect(count).toBe(0);
 	});
 });

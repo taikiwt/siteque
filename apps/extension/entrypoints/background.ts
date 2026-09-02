@@ -52,9 +52,7 @@ export default defineBackground(() => {
 			const matchingGuestCount = guestNotes.filter((note) => {
 				if (note.is_resolved) return false;
 
-				// お気に入りは全タブ貫通を許可（オンライン仕様と完全同期）
-				if (note.is_favorite === true) return true;
-
+				// 💡 お気に入りの全タブ貫通ロジック（if (note.is_favorite === true) return true;）を物理削除
 				// 100%文字レベルで一致するローカルコンテキストのみを正確に集計
 				return (
 					(note.scope === "domain" &&

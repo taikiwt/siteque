@@ -176,16 +176,13 @@ export async function getMatchingNoteCount(
 	domain: string,
 	exact: string,
 ): Promise<number> {
-	const { count, error } = await supabase
-		.rpc(
-			"get_matching_notes",
-			{ p_domain: domain, p_exact: exact },
-			{ count: "exact", head: true },
-		)
-		.eq("is_resolved", false);
+	const { data, error } = await supabase.rpc("get_matching_active_note_count", {
+		p_domain: domain,
+		p_exact: exact,
+	});
 
 	if (error) throw error;
-	return count || 0;
+	return (data as number) || 0;
 }
 
 /**

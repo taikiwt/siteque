@@ -30,3 +30,7 @@ description: sitecueのテーマ、セマンティックカラーの運用、環
 
 ## 5. Favicon Integration Strategy
 - ドメインや外部URLのファビコンを描画する際は、生の `<img>` タグや個別の外部API呼び出しを禁止し、必ず共通コンポーネント `<DomainFavicon domain={...} sizeClassName={...} />` を使用すること。
+
+## 6. Stacking Context & Layer Hierarchy Rules
+- **カード内スタッキングコンテキスト階層規約:** ノートカードの `sticky` 固定ヘッダーは `z-20`、本文内のフローティングボタン（コードブロックコピー等）は `z-1` とし、スクロール時の要素突き抜けを物理排除すること。
+

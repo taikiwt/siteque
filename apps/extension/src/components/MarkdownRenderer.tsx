@@ -97,7 +97,7 @@ function CodeBlock({
 
 	return (
 		<div className="relative group my-3">
-			<div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-base-surface/90 rounded shadow-sm border border-base-border z-10">
+			<div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-base-surface/90 rounded shadow-sm border border-base-border z-1">
 				<button
 					type="button"
 					onClick={handleCopy}

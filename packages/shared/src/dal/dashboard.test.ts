@@ -26,7 +26,10 @@ describe("fetchDashboardOverviewData DAL", () => {
 					select: vi.fn().mockReturnValue({
 						eq: vi.fn().mockReturnValue({
 							gte: vi.fn().mockImplementation((_, dateVal) => {
-								if (typeof dateVal === "string" && dateVal.includes("T00:00:00")) {
+								if (
+									typeof dateVal === "string" &&
+									dateVal.includes("T00:00:00")
+								) {
 									return Promise.resolve({ count: 1, error: null });
 								}
 								return {
@@ -45,7 +48,10 @@ describe("fetchDashboardOverviewData DAL", () => {
 					select: vi.fn().mockReturnValue({
 						eq: vi.fn().mockReturnValue({
 							gte: vi.fn().mockImplementation((_, dateVal) => {
-								if (typeof dateVal === "string" && dateVal.includes("T00:00:00")) {
+								if (
+									typeof dateVal === "string" &&
+									dateVal.includes("T00:00:00")
+								) {
 									return Promise.resolve({ count: 1, error: null });
 								}
 								return {
@@ -115,7 +121,10 @@ describe("fetchDashboardOverviewData DAL", () => {
 					select: vi.fn().mockReturnValue({
 						eq: vi.fn().mockReturnValue({
 							gte: vi.fn().mockImplementation((_, dateVal) => {
-								if (typeof dateVal === "string" && dateVal.includes("T00:00:00")) {
+								if (
+									typeof dateVal === "string" &&
+									dateVal.includes("T00:00:00")
+								) {
 									return Promise.resolve({ count: 1, error: null });
 								}
 								return {
@@ -140,7 +149,10 @@ describe("fetchDashboardOverviewData DAL", () => {
 					select: vi.fn().mockReturnValue({
 						eq: vi.fn().mockReturnValue({
 							gte: vi.fn().mockImplementation((_, dateVal) => {
-								if (typeof dateVal === "string" && dateVal.includes("T00:00:00")) {
+								if (
+									typeof dateVal === "string" &&
+									dateVal.includes("T00:00:00")
+								) {
 									return Promise.resolve({ count: 0, error: null });
 								}
 								return {

@@ -2,7 +2,10 @@ import type React from "react";
 
 export function useMarkdownAssist() {
 	const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.nativeEvent.isComposing) return;
+		// 🛡️ IME入力中およびChromiumの1打鍵目(keyCode 229 / key Process)を完全遮断
+		if (e.nativeEvent.isComposing || e.keyCode === 229 || e.key === "Process") {
+			return;
+		}
 
 		const textarea = e.currentTarget;
 		const { value, selectionStart, selectionEnd } = textarea;
@@ -226,17 +229,16 @@ export function useMarkdownAssist() {
 		}
 
 		// --- 3. ブラケット・ペア・クローズ（記号自動閉じ） & 先読み貫通ガード ---
-		// 💡 バッククォート (`) を bracketPairs および closeChars から完全に除外（パージ）し、コードブロック執筆の邪魔を排除
+		// 💡 バッククォート (`) に加え、変数名やURLで多用されるアンダースコア (_) も除外（引き算）
 		const bracketPairs: Record<string, string> = {
 			"[": "]",
 			"(": ")",
 			'"': '"',
 			"'": "'",
 			"*": "*",
-			_: "_",
 		};
 
-		const closeChars = ["]", ")", '"', "'", "*", "_"];
+		const closeChars = ["]", ")", '"', "'", "*"];
 
 		if (closeChars.includes(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
 			const nextChar = value.charAt(selectionStart);
@@ -286,7 +288,8 @@ export function useMarkdownAssist() {
 		) {
 			const prevChar = value.charAt(selectionStart - 1);
 			const nextChar = value.charAt(selectionStart);
-			const matchingPairs = ["()", "[]", '""', "''", "**", "__"]; // 💡 バッククォートのペア（``）を削除対象からも除外
+			// 💡 `_` も連動削除ペアから除外
+			const matchingPairs = ["()", "[]", '""', "''", "**"];
 
 			if (matchingPairs.includes(prevChar + nextChar)) {
 				e.preventDefault();

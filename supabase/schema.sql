@@ -329,6 +329,21 @@ $$;
 ALTER FUNCTION "public"."get_drafts_by_date"("p_user_id" "uuid", "p_date" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_matching_active_note_count"("p_domain" "text", "p_exact" "text") RETURNS integer
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    AS $$
+  SELECT count(*)::integer
+  FROM public.sitecue_notes
+  WHERE user_id = auth.uid()
+    AND is_resolved = false
+    AND ((scope = 'domain' AND url_pattern = p_domain)
+      OR (scope = 'exact' AND url_pattern = p_exact));
+$$;
+
+
+ALTER FUNCTION "public"."get_matching_active_note_count"("p_domain" "text", "p_exact" "text") OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."sitecue_notes" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "user_id" "uuid" NOT NULL,
@@ -1072,6 +1087,12 @@ GRANT ALL ON TABLE "public"."sitecue_drafts" TO "service_role";
 GRANT ALL ON FUNCTION "public"."get_drafts_by_date"("p_user_id" "uuid", "p_date" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_drafts_by_date"("p_user_id" "uuid", "p_date" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_drafts_by_date"("p_user_id" "uuid", "p_date" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_matching_active_note_count"("p_domain" "text", "p_exact" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_matching_active_note_count"("p_domain" "text", "p_exact" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_matching_active_note_count"("p_domain" "text", "p_exact" "text") TO "service_role";
 
 
 
