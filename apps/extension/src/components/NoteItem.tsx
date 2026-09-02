@@ -292,7 +292,7 @@ function NoteItem({
 			)}
 			{isEditing ? (
 				<div className="space-y-3 flex flex-col flex-1 min-w-0 relative animate-fadeIn">
-					<div className="sticky top-0 z-10 bg-base-bg flex flex-col gap-0 shrink-0 select-none border-b border-base-border/20">
+					<div className="sticky top-0 z-20 bg-base-bg flex flex-col gap-0 shrink-0 select-none border-b border-base-border/20">
 						<div className="flex items-center justify-between w-full min-h-[40px] px-2">
 							<div className="text-xs text-muted-foreground/50 font-semibold pl-1 select-none opacity-0">
 								Editing note...
@@ -441,7 +441,7 @@ function NoteItem({
 				</div>
 			) : (
 				<div className="flex flex-col flex-1">
-					<div className="sticky top-0 z-10 bg-base-bg flex flex-col gap-0 select-none border-b border-base-border/20">
+					<div className="sticky top-0 z-20 bg-base-bg flex flex-col gap-0 select-none border-b border-base-border/20">
 						<div className="flex items-center justify-between w-full min-h-[40px] px-2 transition-colors">
 							<div className="flex items-center gap-1 shrink-0">
 								{!isPreview && (

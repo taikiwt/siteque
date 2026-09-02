@@ -42,17 +42,28 @@ describe("useMarkdownAssist Refined Unit Test Suite", () => {
 		document.body.removeChild(textarea);
 	});
 
+	type MockKeyboardEventOptions = Omit<
+		Partial<React.KeyboardEvent<HTMLTextAreaElement>>,
+		"nativeEvent"
+	> & {
+		nativeEvent?: { isComposing?: boolean };
+	};
+
 	const createMockKeyboardEvent = (
 		key: string,
-		options: Partial<React.KeyboardEvent<HTMLTextAreaElement>> = {},
+		options: MockKeyboardEventOptions = {},
 	) => {
+		const { nativeEvent, ...rest } = options;
 		return {
 			key,
 			preventDefault: vi.fn(),
 			stopPropagation: vi.fn(),
 			currentTarget: textarea,
-			nativeEvent: { isComposing: false },
-			...options,
+			nativeEvent: {
+				isComposing: false,
+				...nativeEvent,
+			} as unknown as KeyboardEvent,
+			...rest,
 		} as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 	};
 
@@ -99,5 +110,64 @@ describe("useMarkdownAssist Refined Unit Test Suite", () => {
 		// preventDefault が呼ばれず、標準入力動作を貫通（阻害しない）することを保証する
 		expect(event.preventDefault).not.toHaveBeenCalled();
 		expect(textarea.value).toBe(""); // 自動閉じ（``）のインメモリ挿入が発生しない
+	});
+
+	it("IME入力中（isComposing: true）は角括弧 [ の自動閉じが発動せずイベントが貫通すること", () => {
+		const { result } = renderHook(() => useMarkdownAssist());
+		textarea.value = "";
+		textarea.selectionStart = 0;
+		textarea.selectionEnd = 0;
+
+		const event = createMockKeyboardEvent("[", {
+			nativeEvent: { isComposing: true },
+		});
+		result.current.onKeyDown(event);
+
+		expect(event.preventDefault).not.toHaveBeenCalled();
+		expect(textarea.value).toBe("");
+	});
+
+	it("Chromium日本語入力1打鍵目（keyCode: 229, key: 'Process'）で [ が押されても自動閉じがガードされること", () => {
+		const { result } = renderHook(() => useMarkdownAssist());
+		textarea.value = "";
+		textarea.selectionStart = 0;
+		textarea.selectionEnd = 0;
+
+		// Chromiumの1打鍵目は nativeEvent.isComposing が false のまま keyCode 229 が渡る
+		const event = createMockKeyboardEvent("[", {
+			keyCode: 229,
+			key: "Process",
+			nativeEvent: { isComposing: false },
+		});
+		result.current.onKeyDown(event);
+
+		expect(event.preventDefault).not.toHaveBeenCalled();
+		expect(textarea.value).toBe("");
+	});
+
+	it("アンダースコア（_）の入力時は自動補完・自動閉じが発生せず標準入力が維持されること", () => {
+		const { result } = renderHook(() => useMarkdownAssist());
+		textarea.value = "";
+		textarea.selectionStart = 0;
+		textarea.selectionEnd = 0;
+
+		const event = createMockKeyboardEvent("_");
+		result.current.onKeyDown(event);
+
+		expect(event.preventDefault).not.toHaveBeenCalled();
+		expect(textarea.value).toBe("");
+	});
+
+	it("アンダースコアのペア（__）の直後でBackspaceを押しても連動削除されないこと", () => {
+		const { result } = renderHook(() => useMarkdownAssist());
+		textarea.value = "__";
+		textarea.selectionStart = 1;
+		textarea.selectionEnd = 1;
+
+		const event = createMockKeyboardEvent("Backspace");
+		result.current.onKeyDown(event);
+
+		expect(event.preventDefault).not.toHaveBeenCalled();
+		expect(textarea.value).toBe("__");
 	});
 });

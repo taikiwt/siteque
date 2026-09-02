@@ -20,3 +20,5 @@ description: Chrome拡張機能（WXT/Manifest V3）、OAuth認証、ゲスト�
 - **アトミック保存 ＆ サイレント更新**: 日記の作成・追記は共通 DAL (`appendDiaryLog` 等) を使用すること。保存は 3秒デバウンス / onBlur による完全サイレント保存とし、保存成功時は 0ms 楽観的 UI で閲覧モードへ移行すること。
 - **Pill-Input 構造**: 入力ブロックは `grid grid-cols-[auto_1fr_auto] items-center gap-3` のカプセル型構造とし、Textarea には `max-h-24 overflow-y-auto` を指定すること。
 - **極上エディタ入力補助**: リスト行（`- `, `1. `）での Tab は行頭インデント、空バレットでの Enter はクリーンな改行（`\n`）スライド着地とすること。バッククォート（` ` `）の自動閉じはコードブロック保護のため除外すること。
+- **IMEキーダウン防壁:** 日本語環境での記号自動補完暴発を防ぐため、`useMarkdownAssist` のキー判定先頭には必ず `if (e.nativeEvent.isComposing || e.keyCode === 229 || e.key === "Process") return;` を配置すること。
+- **記号自動閉じの引き算原則:** バッククォート（`）に加えてアンダースコア（`_`）も自動補完・自動削除の対象から除外すること。

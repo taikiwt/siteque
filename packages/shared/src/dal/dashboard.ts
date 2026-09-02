@@ -111,7 +111,10 @@ export async function fetchDashboardOverviewData(
 		recentNotes = (fallbackNotes as DashboardOverviewData["recentNotes"]) ?? [];
 	}
 
-	let recentDrafts: DashboardOverviewData["recentDrafts"] = drafts7d.slice(0, 5);
+	let recentDrafts: DashboardOverviewData["recentDrafts"] = drafts7d.slice(
+		0,
+		5,
+	);
 	if (drafts7d.length < 5) {
 		const { data: fallbackDrafts } = await supabase
 			.from("sitecue_drafts")
@@ -119,7 +122,8 @@ export async function fetchDashboardOverviewData(
 			.eq("user_id", userId)
 			.order("created_at", { ascending: false })
 			.limit(5);
-		recentDrafts = (fallbackDrafts as DashboardOverviewData["recentDrafts"]) ?? [];
+		recentDrafts =
+			(fallbackDrafts as DashboardOverviewData["recentDrafts"]) ?? [];
 	}
 
 	return {

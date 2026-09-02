@@ -397,6 +397,10 @@ export type Database = {
 					isSetofReturn: true;
 				};
 			};
+			get_matching_active_note_count: {
+				Args: { p_domain: string; p_exact: string };
+				Returns: number;
+			};
 			get_matching_notes: {
 				Args: { p_domain: string; p_exact: string };
 				Returns: {
